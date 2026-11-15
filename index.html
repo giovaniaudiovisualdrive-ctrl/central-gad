@@ -386,7 +386,7 @@ const idbLimpar=async n=>idbReq((await idbSt(n,'readwrite')).clear());
 function aplicarLocal(c,o){if(!S[c])S[c]=[];const i=S[c].findIndex(x=>x.id===o.id);const a=S[c].slice();if(i>=0)a[i]=o;else a.push(o);S[c]=a;idbPut('docs',{col:c,id:o.id,data:o},c+'|'+o.id).catch(()=>{})}
 function removerLocal(c,id){if(!S[c])return;S[c]=S[c].filter(x=>x.id!==id);idbDel('docs',c+'|'+id).catch(()=>{})}
 async function carregarLocal(){try{const l=await idbAll('docs');l.forEach(r=>{if(!S[r.col])S[r.col]=[];S[r.col].push(r.data)});(await idbAll('fila')).forEach(f=>PEND.add(f.col+'|'+f.id))}catch(e){console.warn(e)}}
-const mapUsu=r=>({id:r.user_id,email:r.email,nome:r.nome||r.email,papel:r.papel||'',armazemId:r.armazem_id||'',pessoaId:r.pessoa_id||'',bloqueado:!!r.bloqueado,criado:r.criado_em});
+const mapUsu=r=>({id:r.user_id,email:r.email,nome:r.nome||r.email,papel:r.papel||'',armazemId:r.armazem_id||'',pessoaId:r.pessoa_id||'',bloqueado:!!r.bloqueado,criado:r.criado_em,licenca:r.licenca||'full'});
 function aplicarLinha(r){const k=r.col+'|'+r.id;if(PEND.has(k))return;if(r.deleted)removerLocal(r.col,r.id);else aplicarLocal(r.col,Object.assign({},r.data,{id:r.id}))}
 /* --- gravar (sempre local primeiro, depois a fila envia) --- */
 async function put(c,o,{silent}={}){o=clone(o);if(!o.id)o.id=uid();o.upd=Date.now();aplicarLocal(c,o);PEND.add(c+'|'+o.id);await idbPut('fila',{op:'put',col:c,id:o.id,data:o,ts:Date.now()});if(!silent)scheduleRender();sincronizar();return o}
@@ -402,7 +402,7 @@ async function sincronizar(){
     setSync('enviando',fila.length+' informação(ões)');let conflitos=0,negados=0;
     for(const f of fila){const k=f.col+'|'+f.id;let r;
       try{
-        if(f.col==='usuarios'){const d=f.data||{};r=await SB.from('usuarios').update({nome:d.nome,papel:d.papel||null,armazem_id:d.armazemId||null,pessoa_id:d.pessoaId||null,bloqueado:!!d.bloqueado,atualizado_em:new Date().toISOString()}).eq('user_id',f.id)}
+        if(f.col==='usuarios'){const d=f.data||{};r=await SB.from('usuarios').update({nome:d.nome,papel:d.papel||null,armazem_id:d.armazemId||null,pessoa_id:d.pessoaId||null,bloqueado:!!d.bloqueado,licenca:d.licenca==='visual'?'visual':'full',atualizado_em:new Date().toISOString()}).eq('user_id',f.id)}
         else if(f.op==='del')r=await SB.from('docs').upsert({col:f.col,id:f.id,data:{},deleted:true});
         else if(f.col==='leituras'&&/^(sep|ret|inv)_/.test(f.id)){
           r=await SB.from('docs').upsert({col:f.col,id:f.id,data:f.data,deleted:false},{onConflict:'col,id',ignoreDuplicates:true});
@@ -1004,9 +1004,9 @@ function simFromEvento(id){const e=get('eventos',id);if(!e)return;const m={};con
   (e.itens||[]).forEach(it=>{const p=get('produtos',it.pid);if(!p||!p.caseId){semCase.push(p?p.nome:it.desc);return}const n=Math.ceil(it.qtd/Math.max(1,n0(p.porCase)||1));m[p.caseId]=(m[p.caseId]||0)+n});
   SIM.linhas=Object.entries(m).map(([caseId,qtd])=>({caseId,qtd}));SIM.vei=(e.veiculos||[]).find(v=>{const x=get('veiculos',v);return x&&x.bauC})||SIM.vei;SIM.res=null;SIM.origem=e.nome+(semCase.length?` · ${semCase.length} item(ns) sem case cadastrada: ${semCase.slice(0,5).join(', ')}`:'')}
 const PAL=['#2f6fe0','#e0832f','#2fa36b','#a24fd6','#d64f6b','#1f9fb0','#b59a1b','#6b7a8f','#d6612f','#4f6fd6'];
-function packTruck(items,T){
+function packTruck(items,T,cmp){
   const placed=[],left=[];let kg=0;let eps=[{x:0,y:0,z:0}];
-  const pri=it=>it.rodas?0:it.soChao?1:(typeof SOLTOS!=='undefined'&&SOLTOS.includes(it.modelo))?2:1;const order=items.slice().sort((a,b)=>pri(a)-pri(b)||(b.l*b.w)-(a.l*a.w)||b.h-a.h);
+  const pri=it=>it.rodas?0:it.soChao?1:(typeof SOLTOS!=='undefined'&&SOLTOS.includes(it.modelo))?2:1;const order=items.slice().sort((a,b)=>pri(a)-pri(b)||(cmp?cmp(a,b):0)||(b.l*b.w)-(a.l*a.w)||b.h-a.h);
   for(const it of order){
     if(T.kg&&kg+it.kg>T.kg){left.push(Object.assign({},it,{motivo:'peso'}));continue}
     let best=null;const ors=it.orients||(it.rot?[[it.l,it.w,it.h],[it.w,it.l,it.h]]:[[it.l,it.w,it.h]]);
@@ -1028,18 +1028,18 @@ function packTruck(items,T){
   }
   return {placed,left,kg};
 }
-function truckOf(v){return {L:n0(v.bauC),W:n0(v.bauL),H:n0(v.bauA),kg:n0(v.cargaKg),nome:v.placa+' · '+(v.tipo||''),id:v.id}}
+function truckOf(v){return {L:n0(v.bauC),W:n0(v.bauL),H:n0(v.bauA),kg:n0(v.cargaKg),nome:v.placa+' · '+(v.tipo||''),id:v.id,tipo:v.tipo,eD:v.eixoD,eT:v.eixoT,limD:n0(v.limD),limT:n0(v.limT)}}
 function simular(){
   const items=[];SIM.linhas.forEach((ln,li)=>{const c=get('cases',ln.caseId);if(!c)return;for(let i=0;i<ln.qtd;i++)items.push(itemDaCase(c,ln,li))});
   if(!items.length){toast('Adicione cases para simular.');return}
-  const v=get('veiculos',SIM.vei);const T=v?truckOf(v):{L:n0(SIM.custom.c),W:n0(SIM.custom.l),H:n0(SIM.custom.a),kg:n0(SIM.custom.kg),nome:'Veículo personalizado'};
+  const v=get('veiculos',SIM.vei);const T=v?truckOf(v):{L:n0(SIM.custom.c),W:n0(SIM.custom.l),H:n0(SIM.custom.a),kg:n0(SIM.custom.kg),nome:'Veículo personalizado',tipo:SIM.custom.tipo,eD:SIM.custom.eD,eT:SIM.custom.eT};
   if(!T.L||!T.W||!T.H){toast('O veículo escolhido não tem as medidas do baú. Cadastre em Frota.');return}
-  const res=[];let rest=items;const r1=packTruck(rest,T);res.push(Object.assign({T},r1));rest=r1.left;
+  const res=[];let rest=items;const r1=packEixo(rest,T);res.push(Object.assign({T},r1));rest=r1.left;
   const usados=new Set([T.id]);
   if(rest.length&&SIM.apoio){
     const cands=S.veiculos.filter(x=>x.status==='Disponível'&&x.bauC&&!usados.has(x.id)).map(truckOf).sort((a,b)=>a.L*a.W*a.H-b.L*b.W*b.H);
     while(rest.length){const ok=cands.filter(c=>!usados.has(c.id));if(!ok.length)break;
-      let pick=ok.find(c=>packTruck(rest,c).left.length===0)||ok[ok.length-1];const r=packTruck(rest,pick);if(!r.placed.length)break;usados.add(pick.id);res.push(Object.assign({T:pick,apoio:true},r));rest=r.left}
+      let pick=ok.find(c=>packTruck(rest,c).left.length===0)||ok[ok.length-1];const r=packEixo(rest,pick);if(!r.placed.length)break;usados.add(pick.id);res.push(Object.assign({T:pick,apoio:true},r));rest=r.left}
   }
   const grandes=rest.filter(it=>{const T0=res[0].T;return Math.min(it.l,it.w)>Math.max(T0.W,T0.L)||it.h>T0.H});
   SIM.res={res,rest,grandes,total:items.length};render();
@@ -1081,7 +1081,7 @@ function render3D(cv){
       caixa(b.x+1,b.y+1,zc-2,b.l-2,b.w-2,2,'#9aa0a8',{prato:true})}
     caixa(b.x,b.y,zc,b.l,b.w,hc,'#1f2023',{caseBox:true,modelo:it.modelo||'malao',etq:it.cor,lw:{l:b.l,w:b.w}})});
   // assoalho do baú
-  ctx.beginPath();[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0]].map(p=>P(...p)).forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle='rgba(128,140,155,.18)';ctx.fill();
+  ctx.beginPath();[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0]].map(p=>P(...p)).forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle='rgba(128,140,155,.18)';ctx.fill();if(typeof pisoEixo==='function')pisoEixo(ctx,P,T);
   const lerp=(f,u,v)=>{const [a,b,,d]=f.pts;return [a.sx+(b.sx-a.sx)*u+(d.sx-a.sx)*v,a.sy+(b.sy-a.sy)*u+(d.sy-a.sy)*v]};
   const quad=(f,u0,v0,u1,v1,fill,stroke,lw)=>{const q=[lerp(f,u0,v0),lerp(f,u1,v0),lerp(f,u1,v1),lerp(f,u0,v1)];ctx.beginPath();q.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw||1;ctx.stroke()}};
   const linha=(f,u0,v0,u1,v1,cor,lw)=>{ctx.beginPath();ctx.moveTo(...lerp(f,u0,v0));ctx.lineTo(...lerp(f,u1,v1));ctx.strokeStyle=cor;ctx.lineWidth=lw;ctx.stroke()};
@@ -1127,8 +1127,8 @@ V.carga=()=>{
   view(`<div class="head"><div><h1>Simulador de carga</h1><p>Escolha o veículo e as cases. O sistema arruma a carga da cabine para a porta e mostra se cabe ou se precisa de veículo de apoio.</p></div></div>`);
   view(`<div class="split"><div class="card"><h2>1. Veículo</h2>
     <label class="f">Veículo da frota<select class="i" id="sv"><option value="">Medidas personalizadas</option>${vs.map(v=>`<option value="${v.id}" ${SIM.vei===v.id?'selected':''}>${esc(v.placa)} · ${esc(v.tipo||'')} (${v.bauC}×${v.bauL}×${v.bauA})</option>`).join('')}</select></label>
-    <div class="fgrid" id="scust" style="margin-top:8px;${SIM.vei?'display:none':''}">${[['c','Comprimento (cm)'],['l','Largura (cm)'],['a','Altura (cm)'],['kg','Carga útil (kg)']].map(([k,l])=>`<label class="f">${l}<input class="i" type="number" data-cu="${k}" value="${SIM.custom[k]}"></label>`).join('')}</div>
-    <label class="f" style="flex-direction:row;gap:8px;align-items:center;margin-top:10px;color:var(--ink)"><input type="checkbox" id="sap" ${SIM.apoio?'checked':''}> Se não couber, sugerir veículo de apoio da frota</label>
+    <div class="fgrid" id="scust" style="margin-top:8px;${SIM.vei?'display:none':''}">${[['c','Comprimento (cm)'],['l','Largura (cm)'],['a','Altura (cm)'],['kg','Carga útil (kg)']].map(([k,l])=>`<label class="f">${l}<input class="i" type="number" data-cu="${k}" value="${SIM.custom[k]}"></label>`).join('')}<label class="f">Tipo (para estimar os eixos)<select class="i" data-cx="tipo">${TIPOS_V.map(x=>`<option ${SIM.custom.tipo===x?'selected':''}>${x}</option>`).join('')}</select></label><label class="f">Eixo dianteiro antes do baú (cm, opcional)<input class="i" type="number" data-cx="eD" value="${SIM.custom.eD}" placeholder="estimar"></label><label class="f">Eixo traseiro: distância da frente do baú (cm, opcional)<input class="i" type="number" data-cx="eT" value="${SIM.custom.eT}" placeholder="estimar"></label></div>
+    <label class="f" style="flex-direction:row;gap:8px;align-items:center;margin-top:10px;color:var(--ink)"><input type="checkbox" id="sap" ${SIM.apoio?'checked':''}> Se não couber, sugerir veículo de apoio da frota</label><label class="f" style="flex-direction:row;gap:8px;align-items:center;margin-top:6px;color:var(--ink)"><input type="checkbox" id="seix" ${SIM.eixoAuto?'checked':''}> Arrumar pensando no peso dos eixos (pesado na faixa verde)</label>
     <hr class="s" style="margin:14px 0"><h2>2. Cases</h2>
     <label class="f">Puxar materiais de um evento<select class="i" id="sev"><option value="">—</option>${S.eventos.filter(e=>ATIVO(e)&&(e.itens||[]).length).map(e=>`<option value="${e.id}">${esc(e.nome)}</option>`).join('')}</select></label>
     ${SIM.origem?`<p class="small muted">Origem: ${esc(SIM.origem)}</p>`:''}
@@ -1157,8 +1157,8 @@ V.carga=()=>{
       <div><div class="small muted">Volume ocupado</div><b class="num">${fmt(pv,0)}%</b> <span class="small muted">${fmt(vol/1e6,2)} de ${fmt(volT/1e6,2)} m³</span><div class="bar-m"><i class="${pv>90?'b':pv>75?'w':''}" style="width:${Math.min(100,pv)}%"></i></div></div>
       <div><div class="small muted">Peso</div><b class="num">${fmt(r.kg)} kg</b> <span class="small muted">${T.kg?'de '+fmt(T.kg)+' kg':''}</span><div class="bar-m"><i class="${pk>95?'b':pk>80?'w':''}" style="width:${Math.min(100,pk)}%"></i></div></div>
       <div><div class="small muted">Comprimento usado</div><b class="num">${fmt(comp/100,2)} m</b> <span class="small muted">sobram ${fmt((T.L-comp)/100,2)} m</span><div class="bar-m"><i style="width:${Math.min(100,comp/T.L*100)}%"></i></div></div>
-     </div><p class="small" style="margin:10px 0 0">${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p></div>`);
-    requestAnimationFrame(()=>drawIso($('#cv'+i),T,r.placed));});
+     </div>${painelEixo(r,i)}<p class="small" style="margin:10px 0 0">${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p></div>`);
+    requestAnimationFrame(()=>{drawIso($('#cv'+i),T,r.placed);desenharMapaEixo($('#me'+i),r)});});
   if(R.rest.length){const cnt={};R.rest.forEach(b=>{cnt[b.nome]=(cnt[b.nome]||0)+1});box.insertAdjacentHTML('beforeend',`<div class="card"><h2>Não couberam</h2><p>${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p><p class="small muted" style="margin:0">Cadastre mais veículos com medidas de baú, libere um veículo em manutenção ou divida a carga.</p></div>`)}
 };
 
@@ -1712,7 +1712,7 @@ V.usuarios=()=>{
   const pend=[...S.acessos.filter(a=>{const x=get('usuarios',a.id);return !x||!x.papel}),...S.usuarios.filter(x=>!x.papel&&!S.acessos.some(a=>a.id===x.id)).map(x=>({id:x.id,nome:x.nome||x.email,setor:'',ts:Date.parse(x.criado)||Date.now()}))];const us=S.usuarios.filter(x=>x.papel);const perfis=listaPerfis();
   view(`<div class="head"><div><h1>Usuários e acessos</h1><p>Cada pessoa entra com o e-mail de trabalho. Você escolhe o perfil, e o perfil define as telas e as ações liberadas.</p></div></div>
   <div class="note"><b>Como funciona o login:</b> cada pessoa cria a própria conta com o <b>e-mail de trabalho e uma senha</b>, na tela de entrada (<b>Criar minha conta</b>). A senha fica protegida no servidor; o acesso vale 7 dias e depois pede a senha de novo. Quem esquecer usa <b>Esqueci a senha</b>. A conta nova aparece aqui como pedido: você escolhe o perfil e libera. Para tirar o acesso, marque <b>Bloquear</b>.</div>
-  <div class="seg"><button data-a="usuarios" class="${UA.aba==='usuarios'?'on':''}">Usuários (${us.length})${pend.length?' · '+pend.length+' pedido(s)':''}</button><button data-a="perfis" class="${UA.aba==='perfis'?'on':''}">Perfis de acesso (${perfis.length})</button></div>`);
+  ${licResumoHTML()}<div class="seg"><button data-a="usuarios" class="${UA.aba==='usuarios'?'on':''}">Usuários (${us.length})${pend.length?' · '+pend.length+' pedido(s)':''}</button><button data-a="perfis" class="${UA.aba==='perfis'?'on':''}">Perfis de acesso (${perfis.length})</button></div>`);
   if(UA.aba==='perfis'){
     view(`<div class="row" style="justify-content:space-between"><p class="muted" style="margin:0">Monte perfis marcando as telas e as ações. Ex.: um perfil só de agenda e OS, outro só de leitura no armazém.</p><button class="btn pri" id="pnovo">+ Novo perfil</button></div>
     <div class="grid g2">${perfis.map(p=>`<div class="card"><div class="row" style="justify-content:space-between"><h3>${esc(p.nome)}</h3>${p.fixo?'<span class="chip c-bad">Controle total</span>':`<button class="btn sm" data-pe="${p.id}">Editar</button>`}</div><p class="small muted" style="margin:4px 0 8px">${esc(p.desc||'')}</p>
@@ -1722,19 +1722,20 @@ V.usuarios=()=>{
     $('#pnovo').onclick=()=>editarPerfil(null);$$('[data-pe]').forEach(b=>b.onclick=()=>editarPerfil(perfil(b.dataset.pe)));
   }else{
     view(`<div class="card"><h2>Pedidos de acesso (${pend.length})</h2>${pend.length?`<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Conta</th><th>Nome informado</th><th>Setor</th><th>Pedido em</th><th></th></tr></thead><tbody>${pend.map(a=>`<tr><td data-uid="${esc(a.id)}">—</td><td><b>${esc(a.nome)}</b></td><td>${esc(a.setor)}</td><td>${new Date(a.ts).toLocaleString('pt-BR')}</td><td><button class="btn sm pri" data-ap="${esc(a.id)}">Liberar</button> <button class="btn sm" data-rj="${esc(a.id)}">Recusar</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted" style="margin:0">Nenhum pedido pendente.</p>'}</div>`);
-    view(`<div class="card"><h2>Usuários liberados (${us.length})</h2>${us.length?`<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Conta</th><th>Nome</th><th>Perfil</th><th>Armazém</th><th>Pessoa (escala / ponto)</th><th>Situação</th></tr></thead><tbody>${us.map(u=>{const p=todasPessoas().find(x=>x.id===u.pessoaId);const pf=perfil(u.papel);return `<tr class="click" data-ed="${esc(u.id)}"><td data-uid="${esc(u.id)}">—</td><td>${esc(u.nome)}</td><td><span class="chip ${u.papel==='admin'?'c-bad':'c-acc'}">${esc(pf?pf.nome:'perfil removido')}</span></td><td>${esc((get('armazens',u.armazemId)||{}).nome||'Todos')}</td><td>${esc(p?p.nome:'—')}</td><td>${u.bloqueado?'<span class="chip c-bad">Bloqueado</span>':'<span class="chip c-ok">Ativo</span>'}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted" style="margin:0">Nenhum usuário liberado ainda. O dono da página e os editores já são administradores.</p>'}</div>`);
+    view(`<div class="card"><h2>Usuários liberados (${us.length})</h2>${us.length?`<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Conta</th><th>Nome</th><th>Perfil</th><th>Armazém</th><th>Pessoa (escala / ponto)</th><th>Situação</th></tr></thead><tbody>${us.map(u=>{const p=todasPessoas().find(x=>x.id===u.pessoaId);const pf=perfil(u.papel);return `<tr class="click" data-ed="${esc(u.id)}"><td data-uid="${esc(u.id)}">—</td><td>${esc(u.nome)}</td><td><span class="chip ${u.papel==='admin'?'c-bad':'c-acc'}">${esc(pf?pf.nome:'perfil removido')}</span></td><td>${esc((get('armazens',u.armazemId)||{}).nome||'Todos')}</td><td>${esc(p?p.nome:'—')}</td><td>${u.bloqueado?'<span class="chip c-bad">Bloqueado</span>':'<span class="chip c-ok">Ativo</span>'}${licChip(u)}</td></tr>`}).join('')}</tbody></table></div>`:'<p class="muted" style="margin:0">Nenhum usuário liberado ainda. O dono da página e os editores já são administradores.</p>'}</div>`);
     nomesUsuarios();
     const form=(id,base)=>{const u=Object.assign({papel:'estoquista',armazemId:'',pessoaId:'',bloqueado:false},base||{});const pessoas=todasPessoas();
       const m=openModal(`<div class="mbox"><header><h2>Acesso de ${esc(u.nome||'usuário')}</h2><button class="btn sm" id="mx">Fechar</button></header><div class="mb"><div class="fgrid">
        <label class="f">Nome<input class="i" id="un" value="${esc(u.nome||'')}"></label>
        <label class="f">Perfil de acesso<select class="i" id="up">${listaPerfis().map(p=>`<option value="${p.id}" ${u.papel===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}</select></label>
+       <label class="f">Licença<select class="i" id="ulic"><option value="full" ${u.licenca!=='visual'?'selected':''}>Completa</option><option value="visual" ${u.licenca==='visual'?'selected':''}>Só visualização (OS, agenda)</option></select></label>
        <label class="f">Armazém<select class="i" id="ua"><option value="">Todos</option>${S.armazens.map(a=>`<option value="${a.id}" ${u.armazemId===a.id?'selected':''}>${esc(a.nome)}</option>`).join('')}</select></label>
        <label class="f">É esta pessoa na escala / ponto<select class="i" id="ups"><option value="">—</option>${pessoas.map(p=>`<option value="${p.id}" ${u.pessoaId===p.id?'selected':''}>${esc(p.nome)} (${GRUPOS[p.g]})</option>`).join('')}</select></label>
        <label class="f" style="flex-direction:row;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="ub" ${u.bloqueado?'checked':''}> Bloquear acesso</label></div>
        <p class="small muted" id="upd" style="margin:0"></p></div>
        <footer><span></span><button class="btn pri" id="us">Salvar</button></footer></div>`);
       const desc=()=>{const p=perfil($('#up',m).value);$('#upd',m).textContent=p?p.desc||'':''};$('#up',m).onchange=desc;desc();
-      $('#mx',m).onclick=closeModal;$('#us',m).onclick=async()=>{await put('usuarios',{id,nome:$('#un',m).value.trim(),papel:$('#up',m).value,armazemId:$('#ua',m).value,pessoaId:$('#ups',m).value,bloqueado:$('#ub',m).checked});if(get('acessos',id))await del('acessos',id);closeModal();toast('Acesso salvo')}};
+      $('#mx',m).onclick=closeModal;$('#us',m).onclick=async()=>{const lic=$('#ulic',m).value;if(!$('#ub',m).checked&&!licPodeSalvar(id,{papel:$('#up',m).value,licenca:lic,bloqueado:false}))return toast('Sem vaga na licença para este tipo de acesso. Bloqueie outro usuário, escolha o outro tipo ou amplie a licença.');await put('usuarios',{id,licenca:lic,nome:$('#un',m).value.trim(),papel:$('#up',m).value,armazemId:$('#ua',m).value,pessoaId:$('#ups',m).value,bloqueado:$('#ub',m).checked});if(get('acessos',id))await del('acessos',id);closeModal();toast('Acesso salvo')}};
     $$('[data-ap]').forEach(b=>b.onclick=()=>{const a=get('acessos',b.dataset.ap);form(a.id,{nome:a.nome})});
     $$('[data-rj]').forEach(b=>armDelete(b,()=>del('acessos',b.dataset.rj)));
     $$('[data-ed]').forEach(r=>r.onclick=()=>form(r.dataset.ed,get('usuarios',r.dataset.ed)));
@@ -2000,7 +2001,7 @@ async function publicarContexto(mcp,id,forcar){
 const idDeLink=s=>{s=String(s||'').trim();const m=s.match(/\/d\/([A-Za-z0-9_-]{20,})/)||s.match(/folders\/([A-Za-z0-9_-]{20,})/)||s.match(/^([A-Za-z0-9_-]{20,})$/);return m?m[1]:''};
 V.config=()=>{const c=get('config','geral')||{};const L=limites();const D=cfgDrive();const tok=c.leitorToken||'';const par=c.leitorUrl&&tok?(c.leitorSite?c.leitorSite+(c.leitorSite.includes('?')?'&':'?')+'parear='+encodeURIComponent(tok)+'&u='+encodeURIComponent(c.leitorUrl):c.leitorUrl+(c.leitorUrl.includes('?')?'&':'?')+'parear='+encodeURIComponent(tok)):'';
   view(`<div class="head"><div><h1>Configurações</h1><p>Alertas de lotação, ligação com o Drive e o app de leitura no celular.</p></div></div>
-  <div class="card"><div class="row" style="justify-content:space-between"><div><h2>Aparência</h2><p class="small muted" style="margin:4px 0 0">Tema da empresa para todos. No automático, o sistema troca sozinho na época certa (Natal, Ano Novo, Carnaval, Festa Junina, Outubro Rosa, Halloween) e volta para o preto e vermelho da GAD. Cada pessoa ainda pode escolher o seu no menu lateral.</p></div>${seletorTema('ctema',false)}</div></div>
+  ${licCardHTML()}<div class="card"><div class="row" style="justify-content:space-between"><div><h2>Aparência</h2><p class="small muted" style="margin:4px 0 0">Tema da empresa para todos. No automático, o sistema troca sozinho na época certa (Natal, Ano Novo, Carnaval, Festa Junina, Outubro Rosa, Halloween) e volta para o preto e vermelho da GAD. Cada pessoa ainda pode escolher o seu no menu lateral.</p></div>${seletorTema('ctema',false)}</div></div>
   <div class="grid g2"><div class="card"><h2>Alerta de lotação</h2><p class="small muted">Quantos eventos no mesmo dia mudam o nível: <b>leve</b> (verde), <b>moderado</b> (amarelo) e <b>crítico</b> (vermelho). Vale para painel, agendas, letreiro e telas.</p>
    <div class="fgrid"><label class="f">Moderado a partir de<input class="i" type="number" id="cam" min="2" value="${L.am}"></label><label class="f">Crítico a partir de<input class="i" type="number" id="cvm" min="3" value="${L.vm}"></label></div>
    <button class="btn pri" id="csv" style="margin-top:10px">Salvar limites</button></div>
@@ -2253,6 +2254,174 @@ function desenharSolto(b,caixa){const it=b.it;
     const tubos=ax==='x'?k4.map(([a,c])=>[b.x,b.y+a*(b.w-r),b.z+c*(b.h-r),b.l,r,r]):ax==='y'?k4.map(([a,c])=>[b.x+a*(b.l-r),b.y,b.z+c*(b.h-r),r,b.w,r]):k4.map(([a,c])=>[b.x+a*(b.l-r),b.y+c*(b.w-r),b.z,r,r,b.h]);
     caixa(b.x,b.y,b.z,b.l,b.w,b.h,'#000000',{trelica:true,axis:ax,len:L,sec});tubos.forEach(t=>caixa(...t,'#c3c7cd',{tubo:true}));return}
   caixa(b.x,b.y,b.z,b.l,b.w,b.h,it.modelo==='praticavel'?'#2b2c30':'#5a5e65',{plat:true,etq:it.cor})}
+
+/* ================= DISTRIBUIÇÃO DE PESO NOS EIXOS ================= */
+(()=>{const f=SPEC.veiculos.f;const i=f.findIndex(x=>x.k==='cargaKg');
+  f.splice(i+1,0,{k:'eixoD',l:'Eixo dianteiro: quantos cm fica ANTES da frente do baú (vazio = estimar; na carreta, pino-rei dentro do baú = número negativo)',t:'num'},
+    {k:'eixoT',l:'Eixo traseiro (centro do conjunto): distância da frente do baú até ele (cm, vazio = estimar)',t:'num'},
+    {k:'limD',l:'Carga máxima no eixo dianteiro (kg, opcional)',t:'num'},{k:'limT',l:'Carga máxima no eixo traseiro (kg, opcional)',t:'num'})})();
+Object.assign(SIM.custom,{tipo:'Toco',eD:'',eT:''});SIM.eixoAuto=true;
+const EIXO_EST={Carro:[-80,.75],'Utilitário':[-80,.72],Van:[-90,.7],VUC:[-110,.62],'Caminhão 3/4':[-120,.62],Toco:[-130,.62],Truck:[-130,.66],Carreta:[60,-160]};
+const temNum=v=>v!==''&&v!=null&&!isNaN(+v);
+function eixosDe(T){const L=T.L,tp=T.tipo||'';const e=EIXO_EST[tp]||[-120,.62];
+  const hD=temNum(T.eD),hT=temNum(T.eT)&&+T.eT>0;
+  const xf=hD?-(+T.eD):e[0];let xr=hT?+T.eT:(e[1]<0?L+e[1]:L*e[1]);if(xr<=xf+50)xr=xf+50;
+  return {xf,xr,est:!(hD&&hT),carreta:tp==='Carreta'}}
+/* faixas do assoalho: verde = melhor lugar para peso; amarelo = carga média; vermelho = balanço traseiro (só leve) */
+function zonasEixo(T,E){const L=T.L,wb=E.xr-E.xf;const g0=Math.max(0,Math.min(L,E.xr-.35*wb)),g1=Math.max(0,Math.min(L,E.xr+30));const cauda=L-E.xr;const r0=cauda>80?Math.min(L,E.xr+.5*cauda):L;
+  const z=[];const add=(a,b,c,t)=>{if(b-a>1)z.push({x0:a,x1:b,c,t})};
+  add(0,g0,'warn','carga média');add(g0,g1,'ok','melhor lugar para o peso');add(g1,r0,'warn','carga média');add(r0,L,'bad','balanço traseiro: só carga leve');return z}
+const zonaEm=(zs,x)=>(zs.find(z=>x>=z.x0&&x<=z.x1)||{c:'warn'});
+function analisarEixo(T,placed){const E=eixosDe(T);const zs=zonasEixo(T,E);let W=0,mx=0,my=0,mz=0;
+  placed.forEach(b=>{const k=n0(b.it.kg);W+=k;mx+=k*(b.x+b.l/2);my+=k*(b.y+b.w/2);mz+=k*(b.z+b.h/2)});
+  const A={E,zs,W,al:[],sug:[],nivel:'ok',pen:0};if(!W){A.al.push(['warn','As cases não têm peso cadastrado. Cadastre o peso para calcular os eixos.']);A.nivel='warn';return A}
+  const xg=mx/W,yg=my/W,zg=mz/W;const wb=E.xr-E.xf;const RT=W*(xg-E.xf)/wb,RD=W-RT,pD=RD/W;Object.assign(A,{xg,yg,zg,RT,RD,pD});
+  const sobe=n=>{if(n==='bad'||(n==='warn'&&A.nivel==='ok'))A.nivel=n};const al=(n,t)=>{A.al.push([n,t]);sobe(n)};
+  if(xg>E.xr){al('bad','O centro da carga ficou atrás do eixo traseiro: a frente fica leve, o caminhão perde direção e freio na dianteira.');A.pen+=20;A.sug.push('Leve as cases mais pesadas para perto da cabine, antes do eixo traseiro, e deixe as leves perto da porta.')}
+  else if(pD<.06){al('warn','Frente leve: quase todo o peso está no eixo traseiro.');A.sug.push('Traga um pouco de peso para a frente do baú (perto da cabine).')}
+  if(pD>.45){al('bad',`Peso demais no eixo dianteiro (${fmt(pD*100,0)}% da carga).`);A.sug.push('Passe as cases pesadas da frente para a faixa verde, logo antes do eixo traseiro.')}
+  else if(pD>.36){al('warn',`Eixo dianteiro carregado (${fmt(pD*100,0)}% da carga).`);A.sug.push('Se der, puxe as cases mais pesadas um pouco para trás, para a faixa verde.')}
+  A.pen+=Math.abs(pD-.22)*10;
+  if(T.limD&&RD>T.limD){al('bad',`Eixo dianteiro passa do limite: ${fmt(RD)} kg de ${fmt(T.limD)} kg.`);A.pen+=10}
+  if(T.limT&&RT>T.limT){al('bad',`Eixo traseiro passa do limite: ${fmt(RT)} kg de ${fmt(T.limT)} kg.`);A.pen+=10}
+  const lat=(yg-T.W/2)/(T.W/2);const ladoP=lat<0?'esquerdo (motorista)':'direito (passageiro)',ladoL=lat<0?'direito':'esquerdo';
+  if(Math.abs(lat)>.3){al('bad',`Carga desequilibrada para o lado ${ladoP}.`);A.sug.push(`Troque algumas cases pesadas para o lado ${ladoL}.`)}
+  else if(Math.abs(lat)>.15){al('warn',`Carga um pouco puxada para o lado ${ladoP}.`);A.sug.push(`Equilibre trocando uma case pesada para o lado ${ladoL}.`)}
+  A.pen+=Math.abs(lat)*6;
+  const hz=zg/T.H;if(hz>.55){al('bad','Centro de gravidade alto: risco de tombar em curva.');A.sug.push('Coloque as cases pesadas embaixo e as leves por cima.')}else if(hz>.42){al('warn','Peso alto na pilha.');A.sug.push('Prefira as cases pesadas no chão do baú.')}
+  A.pen+=Math.max(0,hz-.35)*6;
+  const pes=placed.map(b=>n0(b.it.kg)).sort((a,b)=>b-a);const corte=Math.max(30,pes[Math.floor(pes.length*.25)]||0);
+  const noFundo=placed.filter(b=>n0(b.it.kg)>=corte&&zonaEm(zs,b.x+b.l/2).c==='bad');
+  if(noFundo.length){al('warn',`${noFundo.length} volume(s) pesado(s) no balanço traseiro (faixa vermelha).`);A.sug.push('Troque de lugar: '+[...new Set(noFundo.map(b=>b.it.nome))].slice(0,3).join(', ')+' para a faixa verde.');A.pen+=noFundo.length}
+  const sobreLeve=placed.filter(b=>b.z>0&&placed.some(q=>Math.abs(q.z+q.h-b.z)<1&&q.x<b.x+b.l&&q.x+q.l>b.x&&q.y<b.y+b.w&&q.y+q.w>b.y&&n0(q.it.kg)+5<n0(b.it.kg)));
+  if(sobreLeve.length){al('warn',`${sobreLeve.length} volume(s) pesado(s) em cima de um mais leve.`);A.sug.push('Inverta essas pilhas: o mais pesado embaixo.');A.pen+=sobreLeve.length*.5}
+  if(placed.length&&Math.min(...placed.map(b=>b.x))>=20)A.sug.push('A carga ficou afastada da cabine para equilibrar os eixos: trave o espaço vazio da frente (cinta, barra ou cases leves) para nada correr na freada.');
+  if(!A.al.length)A.al.push(['ok','Carga bem distribuída entre os eixos.']);
+  return A}
+/* tenta 3 arrumações e fica com a mais equilibrada (sem deixar case de fora) */
+function packEixo(items,T){const base=packTruck(items,T);base.modo='padrão';if(!SIM.eixoAuto)return base;
+  const op=[base,Object.assign(packTruck(items,T,(a,b)=>n0(b.kg)-n0(a.kg)),{modo:'pesadas perto da cabine'}),Object.assign(packTruck(items,T,(a,b)=>n0(a.kg)-n0(b.kg)),{modo:'pesadas no meio do baú'})];
+  /* se sobra comprimento, testa empurrar a carga inteira para trás até o centro cair na faixa verde */
+  op.slice().forEach(r=>{if(!r.placed.length)return;const A=analisarEixo(T,r.placed);if(!A.W)return;const fim=Math.max(...r.placed.map(b=>b.x+b.l));const E=A.E;const alvo=E.xr-.22*(E.xr-E.xf);
+    const dx=Math.floor(Math.max(0,Math.min(T.L-fim,alvo-A.xg)));if(dx<20)return;
+    op.push(Object.assign({},r,{placed:r.placed.map(b=>Object.assign({},b,{x:b.x+dx})),modo:r.modo+` e afastada ${fmt(dx/100,2)} m da cabine`,folgaFrente:dx}))});
+  const nota=r=>r.left.length*1e6+analisarEixo(T,r.placed).pen;return op.reduce((m,r)=>nota(r)<nota(m)-.3?r:m)}
+/* mapa de peso visto de cima */
+function corNivel(c){const cs=getComputedStyle(document.documentElement);return cs.getPropertyValue('--'+c).trim()||({ok:'#2fa36b',warn:'#d9a21b',bad:'#d64f4f'})[c]}
+function desenharMapaEixo(cv,r){if(!cv)return;const T=r.T,A=analisarEixo(T,r.placed),E=A.E;const dpr=window.devicePixelRatio||1;const Wc=cv.clientWidth||600;
+  const cab=E.carreta?40:Math.max(150,-E.xf+70);const s=(Wc-24)/(T.L+cab);const bh=T.W*s;const Hc=Math.round(bh+78);cv.style.height=Hc+'px';cv.width=Math.round(Wc*dpr);cv.height=Math.round(Hc*dpr);
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,Wc,Hc);const cs=getComputedStyle(document.documentElement);const ink=cs.getPropertyValue('--ink').trim()||'#ddd',mut=cs.getPropertyValue('--muted').trim()||'#888';
+  const ox=12+cab*s,oy=34;const X=x=>ox+x*s,Y=y=>oy+y*s;ctx.font='600 11px Inter,sans-serif';
+  // cabine
+  if(!E.carreta){ctx.fillStyle='rgba(128,140,155,.22)';ctx.beginPath();ctx.roundRect?ctx.roundRect(12,Y(T.W*.08),cab*s-8,bh*.84,8):ctx.rect(12,Y(T.W*.08),cab*s-8,bh*.84);ctx.fill();ctx.fillStyle=mut;ctx.fillText('CABINE',16,Y(T.W/2)+4)}
+  // faixas
+  A.zs.forEach(z=>{ctx.globalAlpha=.13;ctx.fillStyle=corNivel(z.c);ctx.fillRect(X(z.x0),oy,(z.x1-z.x0)*s,bh);ctx.globalAlpha=1;ctx.fillRect(X(z.x0),oy-7,(z.x1-z.x0)*s,5)});
+  // calor (kg por m²)
+  const cel=20,nx=Math.ceil(T.L/cel),ny=Math.ceil(T.W/cel);const g=new Float64Array(nx*ny);
+  r.placed.forEach(b=>{const k=n0(b.it.kg);if(!k)return;const d=k/(b.l*b.w/1e4);for(let i=Math.floor(b.x/cel);i<Math.min(nx,Math.ceil((b.x+b.l)/cel));i++)for(let j=Math.floor(b.y/cel);j<Math.min(ny,Math.ceil((b.y+b.w)/cel));j++){const ovx=Math.min(b.x+b.l,(i+1)*cel)-Math.max(b.x,i*cel),ovy=Math.min(b.y+b.w,(j+1)*cel)-Math.max(b.y,j*cel);if(ovx>0&&ovy>0)g[i*ny+j]+=d*ovx*ovy/(cel*cel)}});
+  for(let i=0;i<nx;i++)for(let j=0;j<ny;j++){const v=g[i*ny+j];if(v<1)continue;ctx.globalAlpha=Math.min(.85,.35+v/2000);ctx.fillStyle=corNivel(v<350?'ok':v<800?'warn':'bad');ctx.fillRect(X(i*cel)+.5,Y(j*cel)+.5,cel*s-1,cel*s-1)}ctx.globalAlpha=1;
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=1;r.placed.forEach(b=>{if(b.z===0)ctx.strokeRect(X(b.x),Y(b.y),b.l*s,b.w*s)});
+  ctx.strokeStyle=mut;ctx.setLineDash([5,4]);ctx.strokeRect(X(0),oy,T.L*s,bh);ctx.setLineDash([]);ctx.fillStyle=mut;ctx.fillText('PORTA',X(T.L)-40,oy+bh+14);
+  // eixos e rodas
+  const eixo=(x,rot,kg)=>{ctx.fillStyle='#202227';const rw=Math.max(16,44*s),rh=Math.max(6,14*s);[oy-rh-9,oy+bh+9-rh+rh].forEach(yy=>{ctx.beginPath();ctx.rect(X(x)-rw/2,yy-(yy<oy?0:0),rw,rh);ctx.fill()});
+    ctx.strokeStyle=ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(X(x),oy-9);ctx.lineTo(X(x),oy+bh+9);ctx.stroke();ctx.lineWidth=1;ctx.fillStyle=ink;const t=rot+(kg!=null?` · ${fmt(kg)} kg`:'');const tw=ctx.measureText(t).width;ctx.fillText(t,Math.max(2,Math.min(Wc-tw-2,X(x)-tw/2)),oy+bh+34)};
+  eixo(E.xf,E.carreta?'Pino-rei':'Eixo dianteiro',A.W?A.RD:null);eixo(E.xr,'Eixo traseiro',A.W?A.RT:null);
+  // centro da carga
+  if(A.W){const cx=X(A.xg),cy=Y(A.yg);ctx.strokeStyle=corNivel(A.nivel);ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(cx,cy,9,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(cx-14,cy);ctx.lineTo(cx+14,cy);ctx.moveTo(cx,cy-14);ctx.lineTo(cx,cy+14);ctx.stroke();ctx.lineWidth=1;
+    ctx.fillStyle=ink;ctx.fillText('Centro da carga',Math.min(Wc-100,cx+12),Math.max(12,cy-12))}
+  ctx.fillStyle=mut;ctx.fillText(E.est?'Posição dos eixos estimada pelo tipo do veículo':'Posição dos eixos do cadastro',12,14)}
+function painelEixo(r,i){const A=analisarEixo(r.T,r.placed);const E=A.E;const pc=v=>fmt(v*100,0)+'%';
+  const ic={ok:'✓',warn:'!',bad:'✕'};
+  return `<div style="margin-top:12px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Peso nos eixos</h3>${r.modo&&r.modo!=='padrão'?`<span class="chip">Arrumação: ${esc(r.modo)}</span>`:''}</div>
+   <canvas class="mapa-eixo" id="me${i}" style="width:100%;display:block;margin-top:6px"></canvas>
+   <div class="row small muted" style="gap:12px;margin:4px 0 8px"><span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:var(--ok)"></i> melhor lugar para peso / pouca carga</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:var(--warn)"></i> carga média</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:var(--bad)"></i> balanço traseiro / carga concentrada</span></div>
+   ${A.W?`<div class="grid g3"><div><div class="small muted">${E.carreta?'Pino-rei':'Eixo dianteiro'}</div><b class="num">${fmt(A.RD)} kg</b> <span class="small muted">${pc(A.pD)} da carga${r.T.limD?' · limite '+fmt(r.T.limD)+' kg':''}</span></div>
+     <div><div class="small muted">Eixo traseiro</div><b class="num">${fmt(A.RT)} kg</b> <span class="small muted">${pc(1-A.pD)} da carga${r.T.limT?' · limite '+fmt(r.T.limT)+' kg':''}</span></div>
+     <div><div class="small muted">Centro da carga</div><b class="num">${fmt(A.xg/100,2)} m</b> <span class="small muted">da frente do baú · eixo traseiro a ${fmt(E.xr/100,2)} m</span></div></div>`:''}
+   <div class="list" style="margin-top:8px">${A.al.map(([n,t])=>`<div class="alert ${n}" style="padding:8px 10px"><span class="bar"></span><div class="small"><b>${ic[n]}</b> ${esc(t)}</div></div>`).join('')}</div>
+   ${A.sug.length?`<div class="note small" style="margin-top:8px"><b>Sugestões</b><ul style="margin:4px 0 0;padding-left:18px">${[...new Set(A.sug)].map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`:''}
+   <p class="small muted" style="margin:6px 0 0">Cálculo só da carga (sem o peso do caminhão). ${E.est?'Os eixos foram estimados pelo tipo do veículo; para mais precisão, meça e cadastre em Frota.':''} É uma orientação: confira sempre com o motorista e os limites do documento do veículo.</p></div>`}
+/* faixas e eixos no assoalho do 3D */
+function pisoEixo(ctx,P,T){const E=eixosDe(T);const zs=zonasEixo(T,E);
+  zs.forEach(z=>{ctx.beginPath();[[z.x0,0],[z.x1,0],[z.x1,T.W],[z.x0,T.W]].map(p=>P(p[0],p[1],0)).forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.globalAlpha=.2;ctx.fillStyle=corNivel(z.c);ctx.fill();ctx.globalAlpha=1});
+  [[E.xf,E.carreta?'PINO-REI':'EIXO DIANT.'],[E.xr,'EIXO TRAS.']].forEach(([x,t])=>{const a=P(x,-20,0),b=P(x,T.W+20,0);ctx.strokeStyle=corNivel('bad');ctx.lineWidth=2;ctx.setLineDash([7,4]);ctx.beginPath();ctx.moveTo(a.sx,a.sy);ctx.lineTo(b.sx,b.sy);ctx.stroke();ctx.setLineDash([]);ctx.lineWidth=1;ctx.fillStyle=corNivel('bad');ctx.font='700 10px Inter,sans-serif';ctx.fillText(t,a.sx-24,a.sy+12)})}
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset&&t.dataset.cx){SIM.custom[t.dataset.cx]=t.value}if(t.id==='seix')SIM.eixoAuto=t.checked});
+window.addEventListener('resize',()=>{if(SIM.res)SIM.res.res.forEach((r,i)=>desenharMapaEixo($('#me'+i),r))});
+
+/* ================= LICENÇA (completa / só visualização, vagas e validade) ================= */
+const LIC_PUB={kty:'EC',crv:'P-256',x:'cuXL3PJQLcL9t-PobBFM98-508yCVi24C1VXnbsMVI8',y:'I1aq3UXTez3Y5stnGFFHAA7BgIZ3S6spWYE6gTY-4Rw'};
+const LIC_TESTE_DIAS=30;
+const VIS_ROTAS=['painel','agenda','agadm','eventos','os','baias','escala','ponto'];
+const LIC={cache:new Map(),pend:false};
+const b64uDec=s=>{s=String(s).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return Uint8Array.from(atob(s),c=>c.charCodeAt(0))};
+async function verificarLicenca(cod){
+  try{const [pre,a,b]=String(cod).trim().split('.');if(pre!=='GAD1'||!a||!b)return {ok:false,motivo:'código incompleto'};
+    const txt=b64uDec(a),sig=b64uDec(b);const k=await crypto.subtle.importKey('jwk',Object.assign({ext:true},LIC_PUB),{name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+    if(!await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},k,sig,txt))return {ok:false,motivo:'assinatura não confere'};
+    return {ok:true,p:JSON.parse(new TextDecoder().decode(txt))}}catch(e){return {ok:false,motivo:'código inválido'}}}
+const licDoc=()=>get('config','licenca')||{id:'licenca',chaves:[]};
+function licVerificar(){const falt=(licDoc().chaves||[]).filter(k=>!LIC.cache.has(k));if(!falt.length||LIC.pend)return;LIC.pend=true;
+  Promise.all(falt.map(async k=>LIC.cache.set(k,await verificarLicenca(k)))).finally(()=>{LIC.pend=false;scheduleRender()})}
+const hojeYmd=()=>ymd(new Date());
+const servidorAtual=()=>{try{return new URL(window.GAD_CONFIG.url).host}catch(e){return ''}};
+function licEstado(){licVerificar();const ks=licDoc().chaves||[];
+  const emails=new Set(S.usuarios.map(u=>String(u.email||'').toLowerCase()));if(ME.email)emails.add(String(ME.email).toLowerCase());
+  const lista=ks.map(cod=>{const r=LIC.cache.get(cod);if(!r)return {cod,pend:true};if(!r.ok)return {cod,ok:false,motivo:r.motivo};const p=r.p;
+    let motivo='';if(p.exp&&hojeYmd()>p.exp)motivo='vencida';else if(!emails.has(String(p.email).toLowerCase()))motivo='o e-mail '+p.email+' não tem conta neste sistema';else if(p.srv&&p.srv!==servidorAtual())motivo='licença de outro servidor';
+    return {cod,ok:true,p,motivo,valida:!motivo}});
+  const val=lista.filter(x=>x.valida);const R={lista,full:val.reduce((s,x)=>s+n0(x.p.full),0),vis:val.reduce((s,x)=>s+n0(x.p.vis),0)};
+  const vencs=val.map(x=>x.p.exp).filter(Boolean).sort();R.vence=val.some(x=>!x.p.exp)&&!vencs.length?null:vencs[0]||null;R.vitalicia=val.some(x=>!x.p.exp);
+  if(lista.some(x=>x.pend))R.estado='verificando';else if(val.length)R.estado='ativa';else if(lista.some(x=>x.ok&&x.motivo==='vencida'))R.estado='vencida';
+  else{const ini=Math.min(Date.now(),...S.usuarios.map(u=>Date.parse(u.criado)).filter(x=>!isNaN(x)));R.dias=Math.ceil(LIC_TESTE_DIAS-(Date.now()-ini)/864e5);R.estado=R.dias>0?'teste':'bloqueada'}
+  R.bloq=R.estado==='vencida'||R.estado==='bloqueada';return R}
+/* distribui as vagas: administradores primeiro, depois pela data de cadastro */
+function licAssentos(L,usuarios){L=L||licEstado();usuarios=usuarios||S.usuarios;const m=new Map();
+  const at=usuarios.filter(u=>u.papel&&!u.bloqueado).sort((a,b)=>(a.papel==='admin'?0:1)-(b.papel==='admin'?0:1)||String(a.criado||'').localeCompare(String(b.criado||'')));
+  if(L.estado!=='ativa'){at.forEach(u=>m.set(u.id,L.bloq?'visual':(u.licenca==='visual'?'visual':'full')));return {m,f:0,v:0,sem:0}}
+  let f=0,v=0;const quer=t=>at.filter(u=>(u.licenca==='visual'?'visual':'full')===t);
+  quer('full').forEach(u=>{if(f<L.full){f++;m.set(u.id,'full')}});quer('visual').forEach(u=>{if(v<L.vis){v++;m.set(u.id,'visual')}});
+  quer('full').filter(u=>!m.has(u.id)).forEach(u=>{if(v<L.vis){v++;m.set(u.id,'visual')}else m.set(u.id,'sem')});
+  quer('visual').filter(u=>!m.has(u.id)).forEach(u=>{if(f<L.full){f++;m.set(u.id,'visual')}else m.set(u.id,'sem')});
+  return {m,f,v,sem:[...m.values()].filter(x=>x==='sem').length}}
+/* aplica a licença às permissões */
+const _aplicarPapelLic=aplicarPapel;aplicarPapel=function(){_aplicarPapelLic();ME.assento='full';ME.semVaga=false;if(ME.local||!ME.papel)return;
+  const a=licAssentos().m.get(ME.id)||'full';ME.assento=a;if(a==='sem'){ME.semVaga=true;ME.papel=null}};
+const licRestrito=()=>{if(ME.local)return {r:false};const L=licEstado();return {r:L.bloq||ME.assento==='visual',bloq:L.bloq}};
+const _podeVerLic=podeVer;podeVer=function(r){const x=licRestrito();if(!x.r)return _podeVerLic(r);r=ROTA_ALIAS[r]||r;
+  if(ME.papel==='admin'&&x.bloq&&['config','usuarios'].includes(r))return true;if(!VIS_ROTAS.includes(r))return false;if(ME.papel==='admin')return true;
+  const p=perfil(ME.papel);const rs=(p&&p.rotas)||[];return rs.includes(r)||!rs.some(k=>VIS_ROTAS.includes(k))};
+const _podeLic=pode;pode=function(a){const x=licRestrito();if(!x.r)return _podeLic(a);
+  if(ME.papel==='admin'&&x.bloq&&(a==='config'||a==='usuarios'))return true;if(a==='ponto')return _podeLic(a);if(ACAO_IDS.has(a)||a==='eventos')return false;return podeVer(a)};
+const _semAcessoLic=V.semacesso;V.semacesso=()=>{if(ME.semVaga){view(`<div class="card" style="max-width:560px"><h1>Sem vaga na licença</h1><p>Todas as vagas de usuário da licença desta empresa estão ocupadas. Peça ao administrador para liberar uma vaga ou ampliar a licença.</p></div>`);return}_semAcessoLic()};
+/* aviso no menu lateral */
+const fmtData=d=>d?d.split('-').reverse().join('/'):'';
+const diasAte=d=>Math.ceil((Date.parse(d+'T23:59:59')-Date.now())/864e5);
+function licAviso(){if(ME.local||!ME.papel&&!ME.semVaga)return null;const L=licEstado();const adm=ME.papel==='admin';
+  if(L.bloq)return ['bad',L.estado==='vencida'?'Licença vencida: sistema em modo só leitura.':'Período de teste encerrado: sistema em modo só leitura.'];
+  if(!adm)return null;
+  if(L.estado==='teste')return ['warn',`Período de teste: ${L.dias} dia(s) restantes. Ative a licença em Configurações.`];
+  if(L.estado==='ativa'){const s=licAssentos(L).sem;if(s)return ['bad',`${s} usuário(s) sem vaga na licença.`];if(L.vence&&!L.vitalicia&&diasAte(L.vence)<=30)return ['warn',`A licença vence em ${diasAte(L.vence)} dia(s) (${fmtData(L.vence)}).`]}
+  return null}
+const _drawNavLic=drawNav;drawNav=function(cur){_drawNavLic(cur);const a=licAviso();if(!a)return;const b=$('#nav .brand');if(b)b.insertAdjacentHTML('afterend',`<a href="#config" class="small" style="display:block;margin:0 10px 8px;padding:8px 10px;border-radius:8px;background:var(--${a[0]});color:#fff;font-weight:600;line-height:1.3">${esc(a[1])}</a>`)};
+/* telas: resumo, chip por usuário e cartão em Configurações */
+function licResumoHTML(){if(ME.local)return '';const L=licEstado();const s=licAssentos(L);
+  const st={ativa:['c-ok','Licença ativa'],teste:['c-warn',`Teste · ${L.dias} dia(s)`],vencida:['c-bad','Licença vencida'],bloqueada:['c-bad','Teste encerrado'],verificando:['','Conferindo licença…']}[L.estado];
+  return `<div class="card flat"><div class="row" style="justify-content:space-between"><div class="row"><span class="chip ${st[0]}">${st[1]}</span>${L.estado==='ativa'?`<span class="small">Acesso completo: <b>${s.f} de ${L.full}</b> · Só visualização: <b>${s.v} de ${L.vis}</b>${s.sem?` · <b style="color:var(--bad)">${s.sem} sem vaga</b>`:''} · ${L.vitalicia&&!L.vence?'vitalícia':'vence em '+fmtData(L.vence)}</span>`:'<span class="small muted">Sem limite de usuários durante o teste.</span>'}</div>${pode('config')?'<a class="btn sm" href="#config">Licença</a>':''}</div></div>`}
+function licChip(u){if(ME.local||!u.papel||u.bloqueado)return '';const a=licAssentos().m.get(u.id);return a==='sem'?' <span class="chip c-bad">Sem vaga</span>':a==='visual'?' <span class="chip">Só visualização</span>':' <span class="chip c-acc">Completo</span>'}
+function licPodeSalvar(id,novo){const L=licEstado();if(L.estado!=='ativa')return true;const us=S.usuarios.map(u=>u.id===id?Object.assign({},u,novo):u);if(!us.some(u=>u.id===id))us.push(Object.assign({id,criado:new Date().toISOString()},novo));
+  return licAssentos(L,us).m.get(id)!=='sem'}
+function licCardHTML(){if(ME.local)return '';const L=licEstado();const adm=ME.papel==='admin';
+  return `<div class="card" id="liccard"><div class="row" style="justify-content:space-between"><h2>Licença</h2></div>${licResumoHTML().replace('<div class="card flat">','<div>').replace(/<a class="btn sm" href="#config">Licença<\/a>/,'')}
+   ${L.lista.length?`<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Licença</th><th class="r">Completos</th><th class="r">Visualização</th><th>Validade</th><th>Situação</th>${adm?'<th></th>':''}</tr></thead><tbody>${L.lista.map((x,i)=>`<tr><td>${x.ok?`<b>${esc(x.p.org)}</b><div class="small muted mono">${esc(x.p.id)} · ${esc(x.p.email)}</div>`:'<span class="muted">—</span>'}</td><td class="r">${x.ok?x.p.full:''}</td><td class="r">${x.ok?x.p.vis:''}</td><td>${x.ok?(x.p.exp?fmtData(x.p.exp):'Vitalícia'):''}</td><td>${x.pend?'Conferindo…':x.valida?'<span class="chip c-ok">Válida</span>':`<span class="chip c-bad">${esc(x.ok?x.motivo:x.motivo)}</span>`}</td>${adm?`<td><button class="btn sm" data-licrm="${i}">Remover</button></td>`:''}</tr>`).join('')}</tbody></table></div>`:''}
+   ${adm?`<label class="f" style="margin-top:12px">Colar código da licença<textarea class="i mono" id="liccod" rows="3" placeholder="GAD1.…"></textarea></label><div class="row" style="margin-top:8px"><button class="btn pri" id="licok">Ativar licença</button><span class="small muted" id="licmsg"></span></div>
+   <p class="small muted" style="margin:8px 0 0">Uma licença de <b>expansão</b> soma vagas com a atual. A licença fica ligada ao e-mail do administrador informado na compra. Usuários além das vagas ficam “sem vaga” até liberar ou ampliar.</p>`:''}</div>`}
+function licBind(){if(!$('#liccard'))return;
+  if($('#licok'))$('#licok').onclick=async()=>{const cod=$('#liccod').value.replace(/\s+/g,'');const msg=t=>$('#licmsg').textContent=t;if(!cod)return msg('Cole o código.');
+    const r=await verificarLicenca(cod);if(!r.ok)return msg('Não aceito: '+r.motivo+'.');const d=clone(licDoc());d.chaves=d.chaves||[];if(d.chaves.includes(cod))return msg('Esta licença já está ativa.');
+    if(d.chaves.some(k=>{const c=LIC.cache.get(k);return c&&c.ok&&c.p.id===r.p.id}))return msg('Esta licença já está ativa.');
+    LIC.cache.set(cod,r);d.chaves.push(cod);await put('config',d);toast('Licença ativada: '+r.p.org)};
+  $$('[data-licrm]').forEach(b=>armDelete(b,async()=>{const d=clone(licDoc());d.chaves.splice(+b.dataset.licrm,1);await put('config',d);toast('Licença removida')}))}
+const _cfgLic=V.config;V.config=a=>{_cfgLic(a);licBind()};
 
 /* ================= DADOS DE EXEMPLO ================= */
 async function seedExemplo(){
