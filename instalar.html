@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Instalar a Central GAD</title>
+<link rel="icon" href="icon-192.png"><meta name="theme-color" content="#121214">
+<style>
+:root{--bg:#f3f2f0;--panel:#fdfcfb;--ink:#1c1b1d;--muted:#67625e;--line:#e0dcd8;--ac:#bf2d37;--side:#121214}
+@media (prefers-color-scheme:dark){:root{--bg:#141416;--panel:#1c1c1f;--ink:#e6e3e1;--muted:#9d9894;--line:#2e2d31;--ac:#e0535c;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 "Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--side);color:#fff;padding:28px max(20px,env(safe-area-inset-left,0px));border-bottom:4px solid var(--ac)}
+.in{max-width:900px;margin:0 auto}.logo{display:flex;gap:14px;align-items:center}.logo img{width:52px;height:52px;border-radius:12px}
+h1{margin:0;font-size:26px}header p{margin:6px 0 0;color:#c8c6c6}
+main{padding:24px max(20px,env(safe-area-inset-left,0px)) 48px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ac);color:#fff;border:0;border-radius:10px;padding:14px 20px;font-weight:700;font-size:16px;text-decoration:none;cursor:pointer}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:14px;margin-top:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}.card h2{margin:0 0 8px;font-size:18px}
+ol{padding-left:20px;margin:0}li{margin:4px 0}.muted{color:var(--muted)}.dest{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--ac);border-radius:12px;padding:16px 18px}
+kbd{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px}
+</style></head><body>
+<header><div class="in logo"><img src="icon-192.png" alt=""><div><h1>Central Operacional GAD</h1><p>Instale no computador ou no celular. Funciona também sem internet.</p></div></div></header>
+<main><div class="in">
+ <div class="dest"><b>Instalar agora neste aparelho</b><p class="muted" style="margin:6px 0 12px" id="msg">Se o seu navegador permitir, o botão abaixo instala direto.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" id="inst" hidden>Instalar aplicativo</button><a class="btn sec" href="index.html">Abrir sem instalar</a></div></div>
+ <div class="grid">
+  <div class="card"><h2>Windows</h2><ol><li>Abra este endereço no <b>Microsoft Edge</b> ou no <b>Google Chrome</b>.</li><li>Clique no ícone de instalar na barra de endereço (um monitor com seta) ou no menu <kbd>⋯</kbd> → <b>Aplicativos</b> → <b>Instalar este site como aplicativo</b>.</li><li>Pronto: a Central aparece no menu Iniciar e na área de trabalho.</li></ol></div>
+  <div class="card"><h2>Mac</h2><ol><li><b>Chrome</b>: menu <kbd>⋮</kbd> → <b>Transmitir, salvar e compartilhar</b> → <b>Instalar página como app</b>.</li><li><b>Safari</b> (macOS 14 ou mais novo): menu <b>Arquivo</b> → <b>Adicionar ao Dock</b>.</li><li>Abre como um programa, pelo Launchpad ou pelo Dock.</li></ol></div>
+  <div class="card"><h2>Android</h2><ol><li>Abra no <b>Chrome</b>.</li><li>Toque em <kbd>⋮</kbd> → <b>Instalar aplicativo</b> (ou <b>Adicionar à tela inicial</b>).</li><li>Use pelo ícone. A câmera ao vivo do leitor funciona por ali.</li></ol></div>
+  <div class="card"><h2>iPhone e iPad</h2><ol><li>Abra no <b>Safari</b>.</li><li>Toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>.</li><li>Abra pelo ícone criado.</li></ol></div>
+ </div>
+ <div class="card" style="margin-top:14px"><h2>Primeiro acesso</h2><ol><li>Na tela de entrada, toque em <b>Criar minha conta</b> com o seu e-mail de trabalho e uma senha.</li><li>Confirme pelo link que chega no e-mail.</li><li>Aguarde o administrador liberar o seu perfil. Depois disso, o acesso vale 7 dias e pede a senha de novo.</li></ol>
+  <p class="muted" style="margin:10px 0 0">Sem internet: o que você fizer fica guardado no aparelho e é enviado sozinho quando a conexão voltar. O primeiro acesso de cada aparelho precisa de internet.</p></div>
+</div></main>
+<script>
+let p=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();p=e;document.getElementById('inst').hidden=false;document.getElementById('msg').textContent='Seu navegador permite instalar direto. Clique em Instalar aplicativo.'});
+document.getElementById('inst').onclick=async()=>{if(!p)return;p.prompt();await p.userChoice;p=null;document.getElementById('inst').hidden=true};
+window.addEventListener('appinstalled',()=>{document.getElementById('msg').textContent='Instalado. Abra a Central pelo ícone.'});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body></html>
