@@ -248,8 +248,35 @@ hr.s{border:0;border-top:1px solid var(--line);margin:4px 0}
 .leitor-in{font-size:20px;padding:13px 14px;font-family:var(--f-mono)}
 .leitor .btn.big{white-space:normal;min-width:0;text-align:center}
 [hidden]{display:none!important}
+/* Agenda em tela cheia */
+.tv-hoje{background:#151f2b;border-radius:16px;padding:18px 20px;border-left:10px solid}
+.tv-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:clamp(14px,1.4vw,20px);letter-spacing:.08em;color:#8ea1b6;font-weight:700}
+.tv-nv{color:#fff;border-radius:999px;padding:6px 16px;letter-spacing:0;font-size:clamp(16px,1.8vw,26px)}
+.tv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px;margin-top:14px}
+.tv-ev{background:#0f1720;border-left:8px solid;border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tv-ev b{font-size:clamp(20px,2.2vw,32px);color:#f2f5f8;overflow-wrap:anywhere}.tv-ev span{color:#9fb0c2;font-size:clamp(14px,1.4vw,20px)}
+.tv-semana{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.tv-dia{background:#151f2b;border-radius:12px;border-top:6px solid;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.tv-dh{display:flex;justify-content:space-between;align-items:center;font-size:clamp(14px,1.3vw,20px)}.tv-dh span{color:#fff;border-radius:999px;padding:0 10px;font-weight:700}
+.tv-li{border-left:4px solid;padding:2px 8px;font-size:clamp(12px,1.1vw,16px);color:#dfe6ee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:900px){.tv-semana{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.v3bar{margin-top:10px;gap:6px}
+/* Impressão: fundo branco, sem menus e botões */
+@media print{
+ :root{--bg:#fff!important;--panel:#fff!important;--panel2:#f1f1f1!important;--ink:#111!important;--muted:#555!important;--line:#bbb!important;color-scheme:light}
+ html,body{background:#fff!important;color:#111!important}
+ #nav,.top,#faixaSync,#toast,.v3bar,.k-exit,main::before,button,.btn,.seg,.fileover,input[type=file],#modal{display:none!important}
+ #app{display:block!important}#view{padding:0!important;gap:10px!important}
+ .card,.tbl-wrap,.agora,.alert,tr{break-inside:avoid;box-shadow:none!important}
+ .tbl-wrap{overflow:visible!important;border-color:#bbb!important}th{position:static!important}
+ a{color:inherit;text-decoration:none}.mgrid{min-width:0!important}
+ .sim-cv{max-height:120mm}
+ @page{margin:10mm}
+}
+
 #login{position:fixed;inset:0;z-index:70;background:var(--bg);display:grid;place-items:center;padding:20px max(16px,env(safe-area-inset-left,0px));overflow:auto}
 #login[hidden]{display:none!important}
+
 .login-box{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column;gap:14px;border-top:5px solid var(--accent)}
 .login-box .brand{color:var(--ink);padding:0}.login-box .brand small{color:var(--muted)}
 .faixa-sync{padding:10px max(20px,env(safe-area-inset-left,0px));font-weight:600;font-size:13px}
@@ -295,7 +322,7 @@ main::before{content:"";display:block;height:4px;background:var(--faixa,var(--ac
   <main>
     <div class="top">
       <div class="search"><input id="q" placeholder="Buscar evento, patrimônio, placa, motorista…" autocomplete="off"><div id="searchRes" hidden></div></div>
-      <a class="btn" href="#leitor" title="Ler código de barras, QR Code ou número">▣ Leitor</a>
+      <a class="btn" href="#leitor" title="Ler código de barras, QR Code ou número">▣ Leitor</a><button class="btn" id="bimp" title="Imprimir ou salvar em PDF o que está na tela">Imprimir</button>
       <div class="sync" id="sync"><i class="dot"></i><span>…</span></div>
     </div>
     <div id="faixaSync" hidden></div><div id="view"></div>
@@ -591,7 +618,7 @@ function render(){
   aplicarTema();
   const h=(location.hash||'#painel').slice(1);
   const [name,...rest]=h.split('-');const arg=rest.join('-');
-  if(name==='baia'||h==='baias-tv'){renderKiosk(h);return}
+  if(name==='baia'||h==='baias-tv'||h==='agenda-tv'){renderKiosk(h);return}
   $('#kiosk').hidden=true;document.title='Central Operacional GAD';
   aplicarPapel();
   if(!ME.pronto){drawNav('');$('#view').innerHTML='<div class="empty">Carregando…</div>';return}
@@ -769,7 +796,7 @@ V.osv=id=>{
   const {vs,ms,eq,itens}=osModel(e);
   const L=(l,v,span=1)=>`<td class="lab">${l}</td><td colspan="${span}">${esc(v||'')}</td>`;
   const rowsIt=itens.length?itens:[...Array(8)].map(()=>['','','','','','']);
-  view(`<div class="head"><div><a href="#evento-${id}" class="small">← Voltar ao evento</a><h1>OS ${esc(e.numero||'')}</h1><p>Layout de planilha para facilitar a transição do Excel.</p></div><div class="row"><button class="btn pri" id="ox">Baixar Excel (.xlsx)</button><button class="btn" id="oh">Baixar para imprimir (.html)</button></div></div>
+  view(`<div class="head"><div><a href="#evento-${id}" class="small">← Voltar ao evento</a><h1>OS ${esc(e.numero||'')}</h1><p>Layout de planilha para facilitar a transição do Excel.</p></div><div class="row"><button class="btn pri" id="ox">Baixar Excel (.xlsx)</button><button class="btn" id="oimp">Imprimir</button><button class="btn" id="oh">Baixar (.html)</button></div></div>
   <div class="os-sheet"><table>
    <tr><td colspan="6" class="ttl">ORDEM DE SERVIÇO — GAD SOLUÇÕES</td></tr>
    <tr>${L('Nº OS',e.numero)}${L('Status',e.status)}${L('Emissão',fDY(ymd(new Date())))}</tr>
@@ -803,14 +830,9 @@ V.osv=id=>{
     const merges=[{s:{r:0,c:0},e:{r:0,c:5}}];A.forEach((r,i)=>{if(r.length===1)merges.push({s:{r:i,c:0},e:{r:i,c:5}})});
     for(let i=mStart;i<mStart+itens.length;i++)merges.push({s:{r:i,c:1},e:{r:i,c:2}});
     baixar(`OS_${e.numero||e.id}.xlsx`,xlsxBlob([['OS',A,{merges,cols:[{wch:16},{wch:34},{wch:14},{wch:26},{wch:18},{wch:20}]}]]))};
+  $('#oimp').onclick=()=>imprimirHTML('OS '+(e.numero||''),$('.os-sheet').innerHTML,'body{font-family:Arial,sans-serif;margin:0}table{border-collapse:collapse;width:100%}td{border:1px solid #888;padding:4px 6px;font-size:11px;color:#111}.band{background:#1f3b63;color:#fff;font-weight:bold;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}.lab,.hdr{background:#dfe6ef;font-weight:bold;-webkit-print-color-adjust:exact;print-color-adjust:exact}.hdr{text-align:center}.ttl{font-size:18px;font-weight:bold;text-align:center;padding:10px}@page{margin:10mm}');
   $('#oh').onclick=()=>{const css=`body{font-family:Arial,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}td{border:1px solid #888;padding:4px 6px;font-size:12px}.band{background:#1f3b63;color:#fff;font-weight:bold;text-align:center}.lab,.hdr{background:#dfe6ef;font-weight:bold}.hdr{text-align:center}.ttl{font-size:18px;font-weight:bold;text-align:center;padding:10px}@media print{body{margin:0}}`;
-    baixar(`OS_${e.numero||e.id}.html`,`<!doctype html><html><head><meta charset="utf-8">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#121214">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png"><title>OS ${esc(e.numero)}</title><style>${css}</style></head><body>${$('.os-sheet').innerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`)};
+    baixar(`OS_${e.numero||e.id}.html`,`<!doctype html><html><head><meta charset="utf-8"><title>OS ${esc(e.numero)}</title><style>${css}</style></head><body>${$('.os-sheet').innerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`)};
 };
 
 /* ================= BAIAS ================= */
@@ -833,7 +855,7 @@ function renderKiosk(h){
   const k=$('#kiosk');k.hidden=false;const now=new Date();
   const clock=pad(now.getHours())+':'+pad(now.getMinutes());
   const cd=dt=>{const d=pD(dt);if(!d)return '—';const m=Math.round((d-now)/60000);if(m<-60*24)return fDT(dt);if(m<0)return 'há '+fmtMin(-m);return 'em '+fmtMin(m)};
-  if(h==='baias-tv'){
+  if(h==='agenda-tv'){renderAgendaTV(k)}else if(h==='baias-tv'){
     const bs=S.baias.slice().sort((a,b)=>a.numero-b.numero);
     k.innerHTML=`<div class="k-wrap"><div class="k-top"><div class="k-bay">Galpão · Baias</div><div class="k-clock">${clock}</div></div>${letreiro(true)}<div class="k-wall">${bs.map(b=>{const e=get('eventos',b.eventoId);const p=e?itensProgress(e):null;return `<div class="k-tile"><div class="h" style="background:${e?kCol(e.status):'#3a4655'}"><span>Baia ${b.numero}</span><span>${e?esc(e.status):'Livre'}</span></div><div class="b">${e?`<b style="font-size:24px">${esc(e.nome)}</b><span style="color:#9fb0c2">${esc(e.local||'')}</span><span>Carga ${fDT(e.cargaInicio)} · <b>${cd(e.cargaInicio)}</b></span>${p.tot?`<div class="k-prog"><i style="width:${p.pct}%"></i></div>`:''}`:'<span style="color:#8ea1b6">Sem evento</span>'}</div></div>`}).join('')||'<p>Nenhuma baia cadastrada.</p>'}</div></div><button class="k-exit" id="kx">Sair da tela</button>`;
   }else{
@@ -855,10 +877,10 @@ function renderKiosk(h){
       ${b.obs?`<div class="k-box" style="border:2px solid #f0aa36"><div class="l" style="color:#f0aa36">Aviso</div><div class="v">${esc(b.obs)}</div></div>`:''}
       </div><button class="k-exit" id="kx">Sair da tela</button>`}
   }
-  $('#kx').onclick=()=>{location.hash='#baias'};
+  $('#kx').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});location.hash=h==='agenda-tv'?'#agadm':'#baias'};
   k.ondblclick=()=>{try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}};
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{})}catch(e){}
-  clearTimeout(kT);kT=setTimeout(()=>{if(/^#(baia-|baias-tv)/.test(location.hash))renderKiosk(location.hash.slice(1))},30000);
+  clearTimeout(kT);kT=setTimeout(()=>{if(/^#(baia-|baias-tv|agenda-tv)/.test(location.hash))renderKiosk(location.hash.slice(1))},30000);
 }
 const fmtMin=m=>m<60?m+' min':m<60*24?Math.floor(m/60)+'h'+(m%60?pad(m%60):''):Math.floor(m/1440)+' dia'+(m>=2880?'s':'');
 
@@ -1020,27 +1042,58 @@ function simular(){
   const grandes=rest.filter(it=>{const T0=res[0].T;return Math.min(it.l,it.w)>Math.max(T0.W,T0.L)||it.h>T0.H});
   SIM.res={res,rest,grandes,total:items.length};render();
 }
-function drawIso(cv,T,placed){
-  const dpr=window.devicePixelRatio||1;const W=cv.clientWidth||600,H=cv.clientHeight||300;cv.width=W*dpr;cv.height=H*dpr;const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,W,H);
-  const cs=getComputedStyle(document.documentElement);const ink=cs.getPropertyValue('--muted').trim()||'#888';
-  const c30=Math.cos(Math.PI/6),s30=.5;const P=(x,y,z)=>[(x-y)*c30,(x+y)*s30-z];
-  const corners=[[0,0,0],[T.L,0,0],[0,T.W,0],[T.L,T.W,0],[0,0,T.H],[T.L,0,T.H],[0,T.W,T.H],[T.L,T.W,T.H]].map(p=>P(...p));
-  const minX=Math.min(...corners.map(p=>p[0])),maxX=Math.max(...corners.map(p=>p[0])),minY=Math.min(...corners.map(p=>p[1])),maxY=Math.max(...corners.map(p=>p[1]));
-  const k=Math.min((W-30)/(maxX-minX),(H-30)/(maxY-minY));const ox=15-minX*k+((W-30)-(maxX-minX)*k)/2,oy=15-minY*k+((H-30)-(maxY-minY)*k)/2;
-  const Q=(x,y,z)=>{const p=P(x,y,z);return [ox+p[0]*k,oy+p[1]*k]};
-  const poly=(pts,fill,stroke)=>{ctx.beginPath();pts.forEach((p,i)=>{const q=Q(...p);i?ctx.lineTo(...q):ctx.moveTo(...q)});ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.stroke()}};
-  ctx.lineWidth=1;
-  poly([[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0]],'rgba(128,140,155,.12)',ink);
-  poly([[0,0,0],[0,T.W,0],[0,T.W,T.H],[0,0,T.H]],'rgba(128,140,155,.10)',ink);
-  poly([[0,0,0],[T.L,0,0],[T.L,0,T.H],[0,0,T.H]],'rgba(128,140,155,.06)',ink);
-  const sh=(hex,f)=>{const n=parseInt(hex.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f);return `rgb(${Math.min(255,r)},${Math.min(255,g)},${Math.min(255,b)})`};
-  placed.slice().sort((a,b)=>(a.x+a.y+a.z)-(b.x+b.y+b.z)).forEach(b=>{const c=b.it.cor;const {x,y,z,l,w,h}=b;ctx.lineWidth=.8;
-    poly([[x,y,z+h],[x+l,y,z+h],[x+l,y+w,z+h],[x,y+w,z+h]],sh(c,1.15),'rgba(0,0,0,.35)');
-    poly([[x+l,y,z],[x+l,y+w,z],[x+l,y+w,z+h],[x+l,y,z+h]],sh(c,.85),'rgba(0,0,0,.35)');
-    poly([[x,y+w,z],[x+l,y+w,z],[x+l,y+w,z+h],[x,y+w,z+h]],sh(c,.68),'rgba(0,0,0,.35)')});
-  ctx.strokeStyle=ink;ctx.setLineDash([4,4]);[[T.L,0,0,T.L,0,T.H],[T.L,T.W,0,T.L,T.W,T.H],[0,T.W,T.H,T.L,T.W,T.H],[T.L,0,T.H,T.L,T.W,T.H]].forEach(s=>{ctx.beginPath();ctx.moveTo(...Q(s[0],s[1],s[2]));ctx.lineTo(...Q(s[3],s[4],s[5]));ctx.stroke()});ctx.setLineDash([]);
-  ctx.fillStyle=ink;ctx.font='600 11px Inter,sans-serif';const cab=Q(0,T.W/2,0);ctx.fillText('CABINE',cab[0]-50,cab[1]+14);const tr=Q(T.L,T.W/2,0);ctx.fillText('PORTA',tr[0]+6,tr[1]+12);
+/* ================= SIMULADOR 3D: giro 360°, vistas prontas e desenho do caminhão ================= */
+const V3={yaw:.62,pitch:.48,zoom:1.35,cab:true,auto:false,raf:0};
+const V3_VISTAS={iso:[.62,.48],frente:[Math.PI/2,.18],lateral:[0,.12],traseira:[-Math.PI/2,.18],topo:[0,1.5]};
+function drawIso(cv,T,placed){if(!cv)return;cv._args=[T,placed];cv.style.touchAction='none';cv.style.cursor='grab';
+  if(!cv._bound){cv._bound=1;let ini=null;
+    cv.addEventListener('pointerdown',e=>{ini={x:e.clientX,y:e.clientY,yaw:V3.yaw,pitch:V3.pitch};cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';V3.auto=false});
+    cv.addEventListener('pointermove',e=>{if(!ini)return;V3.yaw=ini.yaw+(e.clientX-ini.x)*.01;V3.pitch=Math.max(-.15,Math.min(1.55,ini.pitch+(e.clientY-ini.y)*.008));desenharTodos3D()});
+    const fim=()=>{ini=null;cv.style.cursor='grab'};cv.addEventListener('pointerup',fim);cv.addEventListener('pointercancel',fim);
+    cv.addEventListener('wheel',e=>{e.preventDefault();V3.zoom=Math.max(.5,Math.min(3.5,V3.zoom*Math.exp(-e.deltaY*.0012)));desenharTodos3D()},{passive:false})}
+  render3D(cv)}
+function desenharTodos3D(){$$('canvas.sim-cv').forEach(c=>c._args&&render3D(c))}
+function girar3D(){if(!V3.auto){cancelAnimationFrame(V3.raf);return}V3.yaw+=.012;desenharTodos3D();V3.raf=requestAnimationFrame(girar3D)}
+function render3D(cv){
+  const [T,placed]=cv._args;const dpr=window.devicePixelRatio||1;const W=cv.clientWidth||600,H=cv.clientHeight||300;
+  if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const cs=getComputedStyle(document.documentElement);const ink=cs.getPropertyValue('--muted').trim()||'#888';const ac=cs.getPropertyValue('--accent').trim()||'#bf2d37';
+  const cabL=V3.cab?Math.max(140,T.W*.8):0;const roda=V3.cab?Math.max(45,T.H*.22):0;
+  const minX=-cabL,maxX=T.L,minZ=-roda,maxZ=T.H;const cX=(minX+maxX)/2,cY=T.W/2,cZ=(minZ+maxZ)/2;
+  const cyw=Math.cos(V3.yaw),syw=Math.sin(V3.yaw),cp=Math.cos(V3.pitch),sp=Math.sin(V3.pitch);
+  const rot=(x,y,z)=>{const x1=x*cyw-y*syw,y1=x*syw+y*cyw;return [x1,y1*cp-z*sp,y1*sp+z*cp]};// [tela x, profundidade, altura]
+  const raio=.5*Math.hypot(maxX-minX,T.W,maxZ-minZ);const k=Math.min(W,H)/(2.1*raio)*V3.zoom;
+  const P=(x,y,z)=>{const r=rot(x-cX,y-cY,z-cZ);return {sx:W/2+r[0]*k,sy:H/2-r[2]*k,d:r[1]}};
+  const luz=(()=>{const l=[.35,-.55,.75],n=Math.hypot(...l);return l.map(v=>v/n)})();
+  const tint=(hex,f)=>{let n=parseInt(String(hex).replace('#','').slice(0,6),16);if(isNaN(n))n=0x888888;const r=Math.min(255,Math.round((n>>16)*f)),g=Math.min(255,Math.round((n>>8&255)*f)),b=Math.min(255,Math.round((n&255)*f));return `rgb(${r},${g},${b})`};
+  const faces=[];
+  const caixa=(x,y,z,l,w,h,cor,linha)=>{const v=[[x,y,z],[x+l,y,z],[x+l,y+w,z],[x,y+w,z],[x,y,z+h],[x+l,y,z+h],[x+l,y+w,z+h],[x,y+w,z+h]];
+    [[[0,3,7,4],[-1,0,0]],[[1,2,6,5],[1,0,0]],[[0,1,5,4],[0,-1,0]],[[3,2,6,7],[0,1,0]],[[0,1,2,3],[0,0,-1]],[[4,5,6,7],[0,0,1]]].forEach(([idx,nm])=>{
+      const n=rot(...nm);if(n[1]>=-.001)return;const pts=idx.map(i=>P(...v[i]));const lum=.55+.5*Math.max(0,nm[0]*luz[0]+nm[1]*luz[1]+nm[2]*luz[2]);
+      faces.push({pts,d:pts.reduce((s,p)=>s+p.d,0)/4,cor:tint(cor,lum),linha})})};
+  if(V3.cab){const gw=T.W;
+    caixa(-cabL,0,-roda*.55,cabL+T.L,gw,roda*.35,'#3b3d42');                         // chassi
+    caixa(-cabL,-2,-roda*.2,cabL-12,gw+4,T.H*.78,'#d9dbe0','rgba(0,0,0,.35)');        // cabine
+    caixa(-cabL-3,gw*.1,T.H*.3,4,gw*.8,T.H*.36,'#1e3a5c');                           // para-brisa
+    caixa(-cabL*.55,-3,T.H*.33,cabL*.38,4,T.H*.26,'#1e3a5c');caixa(-cabL*.55,gw-1,T.H*.33,cabL*.38,4,T.H*.26,'#1e3a5c'); // janelas
+    caixa(-cabL-6,gw*.05,-roda*.45,6,gw*.9,roda*.3,ac);                              // para-choque
+    [-cabL*.55,T.L*.62,T.L*.84].forEach(px=>{caixa(px-roda*.5,-10,-roda,roda,22,roda,'#151517');caixa(px-roda*.5,gw-12,-roda,roda,22,roda,'#151517')})}
+  placed.forEach(b=>caixa(b.x,b.y,b.z,b.l,b.w,b.h,b.it.cor,'rgba(0,0,0,.4)'));
+  // assoalho do baú
+  ctx.beginPath();[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0]].map(p=>P(...p)).forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle='rgba(128,140,155,.18)';ctx.fill();
+  faces.sort((a,b)=>b.d-a.d).forEach(f=>{ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle=f.cor;ctx.fill();if(f.linha){ctx.strokeStyle=f.linha;ctx.lineWidth=.7;ctx.stroke()}});
+  // contorno do baú (sempre por cima, tracejado)
+  const v=[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0],[0,0,T.H],[T.L,0,T.H],[T.L,T.W,T.H],[0,T.W,T.H]].map(p=>P(...p));
+  ctx.strokeStyle=ink;ctx.lineWidth=1;ctx.setLineDash([5,4]);[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(v[a].sx,v[a].sy);ctx.lineTo(v[b].sx,v[b].sy);ctx.stroke()});ctx.setLineDash([]);
+  ctx.fillStyle=ink;ctx.font='700 11px Inter,sans-serif';const tf=P(V3.cab?-cabL:0,T.W/2,T.H+10),tp=P(T.L,T.W/2,T.H+10);ctx.fillText(V3.cab?'FRENTE':'CABINE',tf.sx-22,tf.sy-4);ctx.fillText('PORTA',tp.sx-18,tp.sy-4);
 }
+document.addEventListener('click',e=>{const b=e.target.closest('[data-v3]');if(!b)return;const a=b.dataset.v3;
+  if(V3_VISTAS[a]){V3.auto=false;[V3.yaw,V3.pitch]=V3_VISTAS[a]}else if(a==='giro'){V3.auto=!V3.auto;if(V3.auto)girar3D()}else if(a==='cab'){V3.cab=!V3.cab}else if(a==='mais')V3.zoom=Math.min(3.5,V3.zoom*1.2);else if(a==='menos')V3.zoom=Math.max(.5,V3.zoom/1.2);else if(a==='imp'){V3.auto=false;window.print();return}
+  $$('[data-v3="giro"]').forEach(x=>x.textContent=V3.auto?'Parar giro':'Girar 360°');$$('[data-v3="cab"]').forEach(x=>x.textContent=V3.cab?'Caminhão: com desenho':'Caminhão: sem desenho');desenharTodos3D()});
+window.addEventListener('resize',()=>desenharTodos3D());
+const barra3D=()=>`<div class="row small v3bar"><button class="btn sm" data-v3="giro">${V3.auto?'Parar giro':'Girar 360°'}</button><button class="btn sm" data-v3="frente">Frente</button><button class="btn sm" data-v3="lateral">Lateral</button><button class="btn sm" data-v3="traseira">Traseira</button><button class="btn sm" data-v3="topo">Topo</button><button class="btn sm" data-v3="iso">3D</button><button class="btn sm" data-v3="menos">−</button><button class="btn sm" data-v3="mais">+</button><button class="btn sm" data-v3="cab">${V3.cab?'Caminhão: com desenho':'Caminhão: sem desenho'}</button><button class="btn sm" data-v3="imp">Imprimir</button><span class="muted">Arraste para girar · roda do mouse para zoom</span></div>`;
+
 V.carga=()=>{
   const vs=S.veiculos.filter(v=>v.bauC);
   view(`<div class="head"><div><h1>Simulador de carga</h1><p>Escolha o veículo e as cases. O sistema arruma a carga da cabine para a porta e mostra se cabe ou se precisa de veículo de apoio.</p></div></div>`);
@@ -1071,7 +1124,7 @@ V.carga=()=>{
   R.res.forEach((r,i)=>{const T=r.T;const vol=r.placed.reduce((s,b)=>s+b.l*b.w*b.h,0),volT=T.L*T.W*T.H;const pv=vol/volT*100,pk=T.kg?r.kg/T.kg*100:0;const comp=r.placed.length?Math.max(...r.placed.map(b=>b.x+b.l)):0;
     const cnt={};r.placed.forEach(b=>{cnt[b.it.nome]=(cnt[b.it.nome]||0)+1});
     box.insertAdjacentHTML('beforeend',`<div class="card"><div class="row" style="justify-content:space-between"><h2>${r.apoio?'Apoio: ':''}${esc(T.nome)}</h2><span class="muted small num">${T.L}×${T.W}×${T.H} cm</span></div>
-     <canvas class="sim-cv" id="cv${i}" style="margin-top:10px"></canvas>
+     ${barra3D()}<canvas class="sim-cv" id="cv${i}" style="margin-top:8px"></canvas>
      <div class="grid g3" style="margin-top:12px">
       <div><div class="small muted">Volume ocupado</div><b class="num">${fmt(pv,0)}%</b> <span class="small muted">${fmt(vol/1e6,2)} de ${fmt(volT/1e6,2)} m³</span><div class="bar-m"><i class="${pv>90?'b':pv>75?'w':''}" style="width:${Math.min(100,pv)}%"></i></div></div>
       <div><div class="small muted">Peso</div><b class="num">${fmt(r.kg)} kg</b> <span class="small muted">${T.kg?'de '+fmt(T.kg)+' kg':''}</span><div class="bar-m"><i class="${pk>95?'b':pk>80?'w':''}" style="width:${Math.min(100,pk)}%"></i></div></div>
@@ -1166,7 +1219,7 @@ function abrirProduto(id){const p=get('produtos',id);if(!p)return;const c=get('c
   </div><footer><div class="row"><button class="btn" id="mlab">Etiqueta</button>${pode('cadastro')?`<button class="btn" id="marq">${p.arquivado?'Desarquivar':'Arquivar'}</button><button class="btn" id="mser">+ Nº de série</button>`:''}</div><div class="row"><button class="btn" id="mmov">Movimentar</button>${pode('cadastro')?'<button class="btn pri" id="med">Editar</button>':''}</div></footer></div>`);
   $('#mx',m).onclick=closeModal;
   try{new QRCode($('#qrp',m),{text:String(p.codigo),width:130,height:130})}catch(e){$('#qrp',m).textContent='QR indisponível'}
-  $('#mlab',m).onclick=()=>baixarEtiquetas([{codigo:p.codigo,nome:p.nome}]);
+  $('#mlab',m).onclick=()=>etiquetas([{codigo:p.codigo,nome:p.nome}]);
   $('#mmov',m).onclick=()=>{closeModal();movModal({produtoId:id})};
   if($('#med',m))$('#med',m).onclick=()=>{closeModal();editForm('produtos',get('produtos',id))};
   if($('#marq',m))$('#marq',m).onclick=async()=>{const x=clone(p);x.arquivado=!x.arquivado;await put('produtos',x);closeModal();toast(x.arquivado?'Equipamento arquivado':'Equipamento reativado')};
@@ -1189,7 +1242,7 @@ V.patrimonio=()=>{
   $('#pc').onchange=e=>{PF.cat=e.target.value;draw()};$('#ps').onchange=e=>{PF.sit=e.target.value;draw()};$('#pa').onchange=e=>{PF.arm=e.target.value;draw()};
   $$('.seg button[data-a]').forEach(b=>b.onclick=()=>{PF.arq=b.dataset.a==='1';render()});
   if($('#np'))$('#np').onclick=()=>editForm('produtos');$('#pmov').onclick=()=>movModal();
-  $('#plab').onclick=()=>{const l=filt();if(!l.length)return toast('Nenhum item no filtro');baixarEtiquetas(l.slice(0,600).map(p=>({codigo:p.codigo,nome:p.nome})))};
+  $('#plab').onclick=()=>{const l=filt();if(!l.length)return toast('Nenhum item no filtro');etiquetas(l.slice(0,600).map(p=>({codigo:p.codigo,nome:p.nome})))};
   $('#pxl').onclick=()=>exportTable('Equipamentos',['Código','EAN','Nome','Pasta','Marca','Modelo','Estoque','Disponível','Em manutenção','Com avaria','Case','Por case','Peso (kg)','Valor (R$)','Local','Arquivado','Link imagem'],filt().map(p=>[p.codigo,p.codBarras,p.nome,p.categoria,p.marca,p.modelo,p.qtd,dispo(p),n0(p.qtdManut),n0(p.qtdAvaria),(get('cases',p.caseId)||{}).nome||'',p.porCase,p.peso,p.valor,nomeLocal(p.localId)||p.local,p.arquivado?'Sim':'',p.fotoUrl]));
 };
 
@@ -1205,7 +1258,7 @@ V.series=()=>{
   draw();$('#sq').dataset.live=1;$('#sq').oninput=e=>{SF.q=e.target.value;draw()};$('#sst').onchange=e=>{SF.st=e.target.value;draw()};
   $$('.seg button[data-a]').forEach(b=>b.onclick=()=>{SF.arq=b.dataset.a==='1';render()});
   if($('#ns'))$('#ns').onclick=()=>editForm('unidades',{status:'Disponível'});
-  $('#slab').onclick=()=>{const l=filt();if(!l.length)return toast('Nada no filtro');baixarEtiquetas(l.slice(0,600).map(u=>({codigo:u.codigo||u.serie,nome:((get('produtos',u.produtoId)||{}).nome||'')+' · S/N '+u.serie})))};
+  $('#slab').onclick=()=>{const l=filt();if(!l.length)return toast('Nada no filtro');etiquetas(l.slice(0,600).map(u=>({codigo:u.codigo||u.serie,nome:((get('produtos',u.produtoId)||{}).nome||'')+' · S/N '+u.serie})))};
 };
 
 /* ================= MOVIMENTAÇÕES ================= */
@@ -1250,7 +1303,7 @@ V.locais=()=>{
   $$('[data-ea]').forEach(b=>b.onclick=()=>editForm('armazens',get('armazens',b.dataset.ea)));
   $$('tr[data-id]').forEach(r=>r.onclick=()=>ed?editForm('locais',get('locais',r.dataset.id)):null);
   $$('.seg button[data-a]').forEach(b=>b.onclick=()=>{LF.arq=b.dataset.a==='1';render()});
-  $('#llab').onclick=()=>{const l=ls.filter(x=>x.codigo);if(!l.length)return toast('Cadastre o código de etiqueta dos locais');baixarEtiquetas(l.map(x=>({codigo:x.codigo,nome:'LOCAL · '+nomeLocal(x.id)})))};
+  $('#llab').onclick=()=>{const l=ls.filter(x=>x.codigo);if(!l.length)return toast('Cadastre o código de etiqueta dos locais');etiquetas(l.map(x=>({codigo:x.codigo,nome:'LOCAL · '+nomeLocal(x.id)})))};
 };
 
 /* ================= CONTAGEM DE INVENTÁRIO ================= */
@@ -1392,13 +1445,7 @@ document.addEventListener('keydown',e=>{const a=document.activeElement;if(a&&/IN
 function baixarEtiquetas(list){
   const tmp=document.createElement('div');const cells=list.map(p=>{tmp.innerHTML='';let src='';try{new QRCode(tmp,{text:String(p.codigo),width:160,height:160,correctLevel:QRCode.CorrectLevel.M});const cv=tmp.querySelector('canvas');src=cv?cv.toDataURL():''}catch(e){}
     return `<div class="lab"><img src="${src}" alt=""><div><div class="c">${esc(p.codigo)}</div><div class="n">${esc(p.nome)}</div><div class="g">GAD Soluções</div></div></div>`}).join('');
-  baixar('Etiquetas_QR.html',`<!doctype html><html><head><meta charset="utf-8">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#121214">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png"><title>Etiquetas</title><style>body{font-family:Arial,sans-serif;margin:8mm}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}.lab{border:1px dashed #999;padding:3mm;display:flex;gap:3mm;align-items:center;break-inside:avoid}.lab img{width:24mm;height:24mm}.c{font:bold 16px monospace}.n{font-size:11px}.g{font-size:9px;color:#666}</style></head><body><div class="grid">${cells}</div><script>window.onload=()=>window.print()<\/script></body></html>`);
+  saidaEtiquetas(`<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>body{font-family:Arial,sans-serif;margin:8mm}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}.lab{border:1px dashed #999;padding:3mm;display:flex;gap:3mm;align-items:center;break-inside:avoid}.lab img{width:24mm;height:24mm}.c{font:bold 16px monospace}.n{font-size:11px}.g{font-size:9px;color:#666}</style></head><body><div class="grid">${cells}</div><script>window.onload=()=>window.print()<\/script></body></html>`);
 }
 
 /* ================= PAINEL DE LED ================= */
@@ -1710,7 +1757,7 @@ V.agadm=()=>{
   const cells=[...Array(42)].map((_,i)=>addDays(st,i));const MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   const agora=lotacaoDia(hoje),amanha=lotacaoDia(am),nvh=nivel(agora.length),nva=nivel(amanha.length);
   view(`<div class="head"><div><h1>Agenda administrativa</h1><p>Cópia do Google Agenda da empresa, com as cores, os eventos da operação e os alertas de lotação.</p></div>
-   <div class="row"><button class="btn pri" id="gsync">Sincronizar com o Google Agenda</button><span class="small" id="gst">${esc(AA.gmsg||(cfg('gcalSync')?'Última sincronização: '+new Date(cfg('gcalSync')).toLocaleString('pt-BR'):'Ainda não sincronizado'))}</span></div></div>`);
+   <div class="row"><button class="btn pri" id="gsync">Sincronizar com o Google Agenda</button><button class="btn" id="atv" title="Ideal para o mini PC ou a TV">Tela cheia</button><button class="btn" id="ajan">Abrir em outra janela</button><span class="small" id="gst">${esc(AA.gmsg||(cfg('gcalSync')?'Última sincronização: '+new Date(cfg('gcalSync')).toLocaleString('pt-BR'):'Ainda não sincronizado'))}</span></div></div>`);
   view(`<div class="agora lv-b-${nvh}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><span class="eyebrow">Acontecendo hoje · ${DIAS[new Date().getDay()]}, ${fDY(hoje)}</span><div class="agora-n">${agora.length} evento${agora.length===1?'':'s'} <span class="chip c-${nvh==='zero'?'gray':nvh}" style="font-size:14px;padding:4px 12px">${NIVEL_NOME[nvh]}</span></div></div>
      <div class="agora-am"><span class="eyebrow">Amanhã</span><b>${amanha.length} evento${amanha.length===1?'':'s'}</b> <span class="chip c-${nva==='zero'?'gray':nva}">${NIVEL_NOME[nva]}</span></div></div>
    <div class="evgrid">${agora.map(x=>cardEv(x,true)).join('')||'<span class="muted">Nenhum evento hoje.</span>'}</div>
@@ -1739,7 +1786,7 @@ V.agadm=()=>{
   if($('#aics'))$('#aics').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const evs=parseICS(await f.text());if(!evs.length)return toast('Nenhum evento no arquivo');
     const nome=f.name.replace(/\.ics$/i,'');let cal=S.calendarios.find(c=>c.nome===nome)||await put('calendarios',{nome,cor:PAL[S.calendarios.length%PAL.length]},{silent:true});let n=0;
     for(const ev of evs){if(!ev.inicio||!ev.titulo)continue;await put('agendaAdm',{id:'ics_'+(ev.uid||uid()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,80),titulo:ev.titulo,inicio:ev.inicio,fim:ev.fim||'',diaInteiro:!!ev.diaInteiro,local:ev.local||'',descricao:ev.descricao||'',calendarioId:cal.id,origem:'ics'},{silent:true});n++}render();toast(n+' compromissos importados')};
-  $('#gsync').onclick=()=>syncGoogle(true);
+  $('#gsync').onclick=()=>syncGoogle(true);$('#atv').onclick=()=>abrirAgendaTV('cheia');$('#ajan').onclick=()=>abrirAgendaTV('janela');
   if(!AA.sync&&Date.now()-(n0(cfg('gcalSync'))||0)>10*60000){AA.sync=1;syncGoogle(false)}
 };
 function parseICS(txt){const lines=txt.replace(/\r?\n[ \t]/g,'').split(/\r?\n/);const out=[];let cur=null;
@@ -2070,6 +2117,39 @@ function seletorTema(id,pessoal){const atual=pessoal?(()=>{try{return localStora
   return `<select class="i" id="${id}" style="width:auto">${pessoal?`<option value="" ${atual===''?'selected':''}>Padrão da empresa</option>`:''}<option value="auto" ${atual==='auto'?'selected':''}>Automático pela época (${TEMAS[temaDaEpoca()].nome})</option>${Object.entries(TEMAS).map(([k,t])=>`<option value="${k}" ${atual===k?'selected':''}>${t.nome}</option>`).join('')}</select>`}
 function trocarTemaPessoal(v){try{v?localStorage.setItem('gad-tema',v):localStorage.removeItem('gad-tema')}catch(e){}TEMA_CHAVE='';aplicarTema();render()}
 
+/* ================= AGENDA EM TELA CHEIA (mini PC / TV) ================= */
+function renderAgendaTV(k){
+  const now=new Date(),hoje=ymd(now),clock=pad(now.getHours())+':'+pad(now.getMinutes());const agora=lotacaoDia(hoje),nv=nivel(agora.length);
+  const prox=[...Array(7)].map((_,i)=>{const d=addDays(now,i+1),ds=ymd(d),l=lotacaoDia(ds);return {d,ds,l,nv:nivel(l.length)}});
+  const corNv={zero:'#3a4655',ok:'#18834a',warn:'#b26e00',bad:'#c3352b'};
+  const cardTV=x=>`<div class="tv-ev" style="border-left-color:${x.cor}"><b>${esc(x.nome)}</b><span>${esc(x.local||'')}${x.origem==='sis'&&x.status?' · '+esc(x.status):''}</span></div>`;
+  k.innerHTML=`<div class="k-wrap"><div class="k-top"><div class="k-bay">Agenda · ${DIAS[now.getDay()]}, ${fDY(hoje)}</div><div class="k-clock">${clock}</div></div>${letreiro(true)}
+   <div class="tv-hoje" style="border-color:${corNv[nv]}"><div class="tv-cab"><span>ACONTECENDO HOJE</span><span class="tv-nv" style="background:${corNv[nv]}">${agora.length} evento${agora.length===1?'':'s'} · ${NIVEL_NOME[nv].toUpperCase()}</span></div>
+    <div class="tv-grid">${agora.map(cardTV).join('')||'<span style="color:#8ea1b6;font-size:22px">Nenhum evento hoje.</span>'}</div></div>
+   <div class="tv-semana">${prox.map(p=>`<div class="tv-dia" style="border-top-color:${corNv[p.nv]}"><div class="tv-dh"><b>${p.ds===ymd(addDays(now,1))?'Amanhã':DIA3[p.d.getDay()]+' '+fD(p.ds)}</b><span style="background:${corNv[p.nv]}">${p.l.length}</span></div>${p.l.slice(0,5).map(x=>`<div class="tv-li" style="border-left-color:${x.cor}">${esc(x.nome)}</div>`).join('')}${p.l.length>5?`<div class="tv-li" style="border-left-color:transparent;color:#8ea1b6">+${p.l.length-5}</div>`:''}</div>`).join('')}</div>
+  </div><button class="k-exit" id="kx">Sair da tela</button>`;
+}
+function abrirAgendaTV(modo){
+  if(modo==='janela'){const w=window.open(location.href.split('#')[0]+'#agenda-tv','agenda_gad','popup,width=1366,height=820');if(!w)toast('O navegador bloqueou a janela. Libere pop-ups para este site.');return}
+  try{const p=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();if(p&&p.catch)p.catch(()=>{})}catch(e){}location.hash='#agenda-tv';
+}
+
+/* ================= IMPRESSÃO ================= */
+/* abre a janela de impressão do sistema (a impressora padrão já vem marcada; dá para trocar ali ou salvar em PDF) */
+function imprimir(){V3.auto=false;window.print()}
+function imprimirHTML(titulo,corpo,css){
+  const f=document.createElement('iframe');f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0';document.body.appendChild(f);const d=f.contentDocument;
+  d.open();d.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>${css||''}</style></head><body>${corpo}</body></html>`);d.close();
+  const ir=()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){toast('Não foi possível abrir a impressão.')}setTimeout(()=>f.remove(),60000)};
+  Promise.all([...d.images].map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))).then(()=>setTimeout(ir,150));
+}
+
+/* etiquetas: baixar o arquivo ou imprimir direto */
+const ETQ={imprimir:false};
+function etiquetas(list){const m=openModal(`<div class="mbox"><header><h2>Etiquetas (${list.length})</h2><button class="btn sm" id="mx">Fechar</button></header><div class="mb"><p class="muted" style="margin:0">Imprima agora (a impressora padrão já vem marcada; dá para trocar na janela de impressão) ou baixe o arquivo.</p></div><footer><button class="btn" id="eb">Baixar arquivo</button><button class="btn pri" id="ei">Imprimir agora</button></footer></div>`);
+  $('#mx',m).onclick=closeModal;$('#eb',m).onclick=()=>{closeModal();ETQ.imprimir=false;baixarEtiquetas(list)};$('#ei',m).onclick=()=>{closeModal();ETQ.imprimir=true;baixarEtiquetas(list)}}
+function saidaEtiquetas(html){if(ETQ.imprimir){ETQ.imprimir=false;const css=(html.match(/<style>([\s\S]*?)<\/style>/)||[])[1]||'';const body=(html.match(/<body>([\s\S]*?)<script>/)||[])[1]||html;imprimirHTML('Etiquetas',body,css)}else baixar('Etiquetas_QR.html',html)}
+document.addEventListener('click',e=>{if(e.target.closest('#bimp'))imprimir()});
 /* ================= DADOS DE EXEMPLO ================= */
 async function seedExemplo(){
   const b=$('#seed');if(b){b.disabled=true;b.textContent='Carregando…'}
