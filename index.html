@@ -1004,8 +1004,8 @@ function simFromEvento(id){const e=get('eventos',id);if(!e)return;const m={};con
   (e.itens||[]).forEach(it=>{const p=get('produtos',it.pid);if(!p||!p.caseId){semCase.push(p?p.nome:it.desc);return}const n=Math.ceil(it.qtd/Math.max(1,n0(p.porCase)||1));m[p.caseId]=(m[p.caseId]||0)+n});
   SIM.linhas=Object.entries(m).map(([caseId,qtd])=>({caseId,qtd}));SIM.vei=(e.veiculos||[]).find(v=>{const x=get('veiculos',v);return x&&x.bauC})||SIM.vei;SIM.res=null;SIM.origem=e.nome+(semCase.length?` · ${semCase.length} item(ns) sem case cadastrada: ${semCase.slice(0,5).join(', ')}`:'')}
 const PAL=['#2f6fe0','#e0832f','#2fa36b','#a24fd6','#d64f6b','#1f9fb0','#b59a1b','#6b7a8f','#d6612f','#4f6fd6'];
-function packTruck(items,T,cmp){
-  const placed=[],left=[];let kg=0;let eps=[{x:0,y:0,z:0}];
+function packTruck(items,T,cmp,pre){
+  const placed=pre?pre.slice():[],left=[];let kg=pre?pre.reduce((s,b)=>s+n0(b.it.kg),0):0;let eps=[{x:0,y:0,z:0}];if(pre){pre.forEach(b=>eps.push({x:b.x+b.l,y:b.y,z:b.z},{x:b.x,y:b.y+b.w,z:b.z},{x:b.x,y:b.y,z:b.z+b.h},{x:b.x+b.l,y:0,z:0},{x:b.x,y:b.y+b.w,z:0}));eps.sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y)}
   const pri=it=>it.rodas?0:it.soChao?1:(typeof SOLTOS!=='undefined'&&SOLTOS.includes(it.modelo))?2:1;const order=items.slice().sort((a,b)=>pri(a)-pri(b)||(cmp?cmp(a,b):0)||(b.l*b.w)-(a.l*a.w)||b.h-a.h);
   for(const it of order){
     if(T.kg&&kg+it.kg>T.kg){left.push(Object.assign({},it,{motivo:'peso'}));continue}
@@ -1157,7 +1157,7 @@ V.carga=()=>{
       <div><div class="small muted">Volume ocupado</div><b class="num">${fmt(pv,0)}%</b> <span class="small muted">${fmt(vol/1e6,2)} de ${fmt(volT/1e6,2)} m³</span><div class="bar-m"><i class="${pv>90?'b':pv>75?'w':''}" style="width:${Math.min(100,pv)}%"></i></div></div>
       <div><div class="small muted">Peso</div><b class="num">${fmt(r.kg)} kg</b> <span class="small muted">${T.kg?'de '+fmt(T.kg)+' kg':''}</span><div class="bar-m"><i class="${pk>95?'b':pk>80?'w':''}" style="width:${Math.min(100,pk)}%"></i></div></div>
       <div><div class="small muted">Comprimento usado</div><b class="num">${fmt(comp/100,2)} m</b> <span class="small muted">sobram ${fmt((T.L-comp)/100,2)} m</span><div class="bar-m"><i style="width:${Math.min(100,comp/T.L*100)}%"></i></div></div>
-     </div>${painelEixo(r,i)}<p class="small" style="margin:10px 0 0">${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p></div>`);
+     </div>${painelEixo(r,i)}${typeof ordemCarga==='function'?ordemCarga(r):''}<p class="small" style="margin:10px 0 0">${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p></div>`);
     requestAnimationFrame(()=>{drawIso($('#cv'+i),T,r.placed);desenharMapaEixo($('#me'+i),r)});});
   if(R.rest.length){const cnt={};R.rest.forEach(b=>{cnt[b.nome]=(cnt[b.nome]||0)+1});box.insertAdjacentHTML('beforeend',`<div class="card"><h2>Não couberam</h2><p>${Object.entries(cnt).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ')}</p><p class="small muted" style="margin:0">Cadastre mais veículos com medidas de baú, libere um veículo em manutenção ou divida a carga.</p></div>`)}
 };
@@ -2422,6 +2422,63 @@ function licBind(){if(!$('#liccard'))return;
     LIC.cache.set(cod,r);d.chaves.push(cod);await put('config',d);toast('Licença ativada: '+r.p.org)};
   $$('[data-licrm]').forEach(b=>armDelete(b,async()=>{const d=clone(licDoc());d.chaves.splice(+b.dataset.licrm,1);await put('config',d);toast('Licença removida')}))}
 const _cfgLic=V.config;V.config=a=>{_cfgLic(a);licBind()};
+
+/* ================= ARRUMAÇÃO ORGANIZADA: colunas do mesmo tipo, paredes retas da cabine para a porta ================= */
+const orientsDe=it=>it.orients||(it.rot?[[it.l,it.w,it.h],[it.w,it.l,it.h]]:[[it.l,it.w,it.h]]);
+/* junta volumes iguais e empilha em colunas (respeita empilhável, rodinha que encaixa e peça em pé) */
+function colunasDe(items,T){const gs=new Map();
+  items.forEach(it=>{const k=it.cid+'|'+JSON.stringify(orientsDe(it))+'|'+!!it.soChao;if(!gs.has(k))gs.set(k,[]);gs.get(k).push(it)});
+  const cols=[],fora=[];let gi=0;
+  for(const its of gs.values()){const it=its[0];let best=null;
+    for(const [l,w,h] of orientsDe(it)){if(l>T.L+.01||w>T.W+.01||h>T.H+.01)continue;
+      const n=Math.floor((T.W+.01)/w),sobra=(T.W-n*w)/T.W;const sc=sobra+(l<w?.015:0);if(!best||sc<best.sc-1e-9)best={l,w,h,sc}}
+    if(!best){fora.push(...its);gi++;continue}
+    const empe=!!(it.minDim&&best.h>it.minDim*1.5);const passo=it.afunda>0?Math.max(1,best.h-it.afunda):best.h;
+    const hMax=Math.min(T.H,Math.max(best.h,4*Math.min(best.l,best.w)));/* coluna estável: até 4x o lado menor */const por=(!it.stack||empe)?1:Math.max(1,1+Math.floor((hMax-best.h+.01)/passo));
+    for(let i=0;i<its.length;i+=por){const c=its.slice(i,i+por);
+      cols.push({g:gi,nome:it.nome,l:best.l,w:best.w,h0:best.h,passo,h:best.h+(c.length-1)*passo,its:c,kg:c.reduce((s,x)=>s+n0(x.kg),0),ikg:n0(it.kg),empe})}
+    gi++}
+  return {cols,fora}}
+function packOrganizado(items,T,ordem){const {cols,fora}=colunasDe(items,T);
+  const G={};cols.forEach(c=>{G[c.g]=G[c.g]||{kg:c.ikg,l:c.l,vol:0};G[c.g].vol+=c.l*c.w*c.h});
+  const chave=c=>ordem==='leve'?G[c.g].kg:ordem==='pesado'?-G[c.g].kg:-(G[c.g].l*1e6+G[c.g].vol/1e3);
+  const rest=cols.slice().sort((a,b)=>chave(a)-chave(b)||a.g-b.g||b.h-a.h);
+  const placed=[],left=[...fora],paredes=[];let x=0,kg=0;
+  const cabe=c=>!T.kg||kg+c.kg<=T.kg+.01;
+  const pega=preds=>{for(const p of preds){const j=rest.findIndex(p);if(j>=0)return rest.splice(j,1)[0]}return null};
+  const poe=(c,x0,y0,par)=>{c.its.forEach((it,i)=>{const z=i?c.h0+(i-1)*c.passo:0;placed.push({x:x0,y:y0,z,l:c.l,w:c.w,h:i?c.passo:c.h0,afundou:i&&it.afunda>0?it.afunda:0,empe:c.empe,it,par:par.n})});kg+=c.kg;
+    par.itens[c.nome]=(par.itens[c.nome]||0)+c.its.length;par.alt=Math.max(par.alt,c.h)};
+  while(rest.length){
+    let j=rest.findIndex(c=>x+c.l<=T.L+.01&&cabe(c));if(j<0)break;if(j>0)rest.unshift(rest.splice(j,1)[0]);
+    const D=rest[0].l,g0=rest[0].g;const par={n:paredes.length+1,x,D,itens:{},alt:0,ini:placed.length};let y=0;
+    while(y<T.W-.01){const sobra=T.W-y;
+      const c=pega([q=>q.g===g0&&Math.abs(q.l-D)<.5&&q.w<=sobra+.01&&cabe(q),q=>Math.abs(q.l-D)<.5&&q.w<=sobra+.01&&cabe(q),q=>q.l<=D+.01&&q.w<=sobra+.01&&cabe(q)]);if(!c)break;
+      const lw=c.w;poe(c,x,y,par);let ux=c.l;
+      for(;;){const q=pega([q=>q.g===c.g&&q.w<=lw+.01&&ux+q.l<=D+.01&&cabe(q),q=>Math.abs(q.w-lw)<.5&&ux+q.l<=D+.01&&cabe(q)]);if(!q)break;poe(q,x+ux,y,par);ux+=q.l}
+      y+=lw}
+    if(placed.length===par.ini)break;
+    if(y<T.W-1){const off=(T.W-y)/2;for(let i=par.ini;i<placed.length;i++)placed[i].y+=off}  // parede incompleta fica no centro (equilíbrio lateral)
+    paredes.push(par);x+=D}
+  rest.forEach(c=>left.push(...c.its));
+  let r={placed,left,kg,paredes};
+  if(left.length){const t=packTruck(left,T,(a,b)=>n0(b.kg)-n0(a.kg),placed);const novos=t.placed.slice(placed.length);
+    if(novos.length){const cnt={};novos.forEach(b=>{cnt[b.it.nome]=(cnt[b.it.nome]||0)+1});paredes.push({n:'vaos',itens:cnt})}
+    r={placed:t.placed,left:t.left,kg:t.kg,paredes}}
+  return r}
+/* escolhe a melhor arrumação: sempre organizada; só usa encaixe livre se ele couber mais volumes */
+packEixo=function(items,T){
+  const op=[['comprido','organizada: peças compridas primeiro'],['pesado','organizada: pesadas perto da cabine'],['leve','organizada: leves perto da cabine']].map(([o,n])=>Object.assign(packOrganizado(items,T,o),{modo:n,org:true}));
+  if(Math.min(...op.map(r=>r.left.length))>0)[['encaixe livre',null],['encaixe livre: pesadas primeiro',(a,b)=>n0(b.kg)-n0(a.kg)]].forEach(([n,c])=>op.push(Object.assign(packTruck(items,T,c),{modo:n})));
+  if(SIM.eixoAuto)op.slice().forEach(r=>{if(!r.placed.length)return;const A=analisarEixo(T,r.placed);if(!A.W)return;const fim=Math.max(...r.placed.map(b=>b.x+b.l));const E=A.E;const alvo=E.xr-.22*(E.xr-E.xf);
+    const dx=Math.floor(Math.max(0,Math.min(T.L-fim,alvo-A.xg)));if(dx<20)return;
+    op.push(Object.assign({},r,{placed:r.placed.map(b=>Object.assign({},b,{x:b.x+dx})),modo:r.modo+` · afastada ${fmt(dx/100,2)} m da cabine`,folgaFrente:dx}))});
+  const nota=r=>r.left.length*1e6+(SIM.eixoAuto?analisarEixo(T,r.placed).pen:0)+(r.org?0:4);
+  return op.reduce((m,r)=>nota(r)<nota(m)-.3?r:m)};
+/* ordem de carregamento para a equipe */
+function ordemCarga(r){if(!r.paredes||!r.paredes.length)return '';const lin=o=>Object.entries(o).map(([n,q])=>`<b>${q}×</b> ${esc(n)}`).join(' · ');
+  return `<div style="margin-top:12px"><h3 style="margin:0 0 6px">Ordem para carregar</h3>${r.folgaFrente?`<p class="small muted" style="margin:0 0 6px">Deixe ${fmt(r.folgaFrente/100,2)} m livres junto à cabine e trave esse espaço.</p>`:''}
+   <ol class="small" style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">${r.paredes.map(p=>p.n==='vaos'?`<li><b>Por último, nos vãos e por cima:</b> ${lin(p.itens)}</li>`:`<li><b>Parede ${p.n}</b> <span class="muted">(${fmt(p.D/100,2)} m de fundo · até ${fmt(p.alt/100,2)} m de altura)</span>: ${lin(p.itens)}</li>`).join('')}</ol>
+   <p class="small muted" style="margin:6px 0 0">A parede 1 encosta na cabine. Cada parede é montada inteira (colunas do mesmo tipo, frente reta) antes de começar a próxima.</p></div>`}
 
 /* ================= DADOS DE EXEMPLO ================= */
 async function seedExemplo(){
