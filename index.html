@@ -1011,8 +1011,9 @@ function packTruck(items,T){
     if(T.kg&&kg+it.kg>T.kg){left.push(Object.assign({},it,{motivo:'peso'}));continue}
     let best=null;const ors=it.rot?[[it.l,it.w],[it.w,it.l]]:[[it.l,it.w]];
     for(const p of eps)for(const [l,w] of ors){
-      if(p.x+l>T.L+.01||p.y+w>T.W+.01||p.z+it.h>T.H+.01)continue;
-      const b={x:p.x,y:p.y,z:p.z,l,w,h:it.h};
+      const hE=p.z>0&&it.afunda>0?Math.max(1,it.h-it.afunda):it.h;
+      if(p.x+l>T.L+.01||p.y+w>T.W+.01||p.z+hE>T.H+.01)continue;
+      const b={x:p.x,y:p.y,z:p.z,l,w,h:hE,afundou:hE<it.h?it.afunda:0};
       if(placed.some(q=>b.x<q.x+q.l-.01&&b.x+b.l>q.x+.01&&b.y<q.y+q.w-.01&&b.y+b.w>q.y+.01&&b.z<q.z+q.h-.01&&b.z+b.h>q.z+.01))continue;
       if(b.z>0){let area=0;for(const q of placed){if(Math.abs(q.z+q.h-b.z)>.5)continue;const ox=Math.min(b.x+b.l,q.x+q.l)-Math.max(b.x,q.x),oy=Math.min(b.y+b.w,q.y+q.w)-Math.max(b.y,q.y);if(ox>0&&oy>0){if(!q.it.stack){area=-1;break}area+=ox*oy}}if(area<.9*b.l*b.w)continue}
       const sc=b.x*1e7+b.z*1e4+b.y;if(!best||sc<best.sc)best=Object.assign(b,{sc});
@@ -1028,7 +1029,7 @@ function packTruck(items,T){
 }
 function truckOf(v){return {L:n0(v.bauC),W:n0(v.bauL),H:n0(v.bauA),kg:n0(v.cargaKg),nome:v.placa+' · '+(v.tipo||''),id:v.id}}
 function simular(){
-  const items=[];SIM.linhas.forEach((ln,li)=>{const c=get('cases',ln.caseId);if(!c)return;for(let i=0;i<ln.qtd;i++)items.push({l:n0(c.c),w:n0(c.l),h:n0(c.a),kg:n0(c.peso),stack:!!c.empilha,rot:c.girar!==false,nome:c.nome,cor:PAL[li%PAL.length],cid:c.id})});
+  const items=[];SIM.linhas.forEach((ln,li)=>{const c=get('cases',ln.caseId);if(!c)return;for(let i=0;i<ln.qtd;i++)items.push({l:n0(c.c),w:n0(c.l),h:n0(c.a),kg:n0(c.peso),stack:!!c.empilha,rot:c.girar!==false,nome:c.nome,cor:PAL[li%PAL.length],cid:c.id,modelo:c.modelo||'malao',rodas:!!c.rodinhas,altRoda:n0(c.altRoda)||12,afunda:c.rodinhas?n0(c.afunda):0})});
   if(!items.length){toast('Adicione cases para simular.');return}
   const v=get('veiculos',SIM.vei);const T=v?truckOf(v):{L:n0(SIM.custom.c),W:n0(SIM.custom.l),H:n0(SIM.custom.a),kg:n0(SIM.custom.kg),nome:'Veículo personalizado'};
   if(!T.L||!T.W||!T.H){toast('O veículo escolhido não tem as medidas do baú. Cadastre em Frota.');return}
@@ -1043,7 +1044,7 @@ function simular(){
   SIM.res={res,rest,grandes,total:items.length};render();
 }
 /* ================= SIMULADOR 3D: giro 360°, vistas prontas e desenho do caminhão ================= */
-const V3={yaw:.62,pitch:.48,zoom:1.35,cab:true,auto:false,raf:0};
+const V3={yaw:.62,pitch:.48,zoom:1.15,cab:false,auto:false,raf:0};
 const V3_VISTAS={iso:[.62,.48],frente:[Math.PI/2,.18],lateral:[0,.12],traseira:[-Math.PI/2,.18],topo:[0,1.5]};
 function drawIso(cv,T,placed){if(!cv)return;cv._args=[T,placed];cv.style.touchAction='none';cv.style.cursor='grab';
   if(!cv._bound){cv._bound=1;let ini=null;
@@ -1058,41 +1059,62 @@ function render3D(cv){
   const [T,placed]=cv._args;const dpr=window.devicePixelRatio||1;const W=cv.clientWidth||600,H=cv.clientHeight||300;
   if(cv.width!==Math.round(W*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
   const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
-  const cs=getComputedStyle(document.documentElement);const ink=cs.getPropertyValue('--muted').trim()||'#888';const ac=cs.getPropertyValue('--accent').trim()||'#bf2d37';
-  const cabL=V3.cab?Math.max(140,T.W*.8):0;const roda=V3.cab?Math.max(45,T.H*.22):0;
-  const minX=-cabL,maxX=T.L,minZ=-roda,maxZ=T.H;const cX=(minX+maxX)/2,cY=T.W/2,cZ=(minZ+maxZ)/2;
+  const cs=getComputedStyle(document.documentElement);const ink=cs.getPropertyValue('--muted').trim()||'#888';
+  const cX=T.L/2,cY=T.W/2,cZ=T.H/2;
   const cyw=Math.cos(V3.yaw),syw=Math.sin(V3.yaw),cp=Math.cos(V3.pitch),sp=Math.sin(V3.pitch);
   const rot=(x,y,z)=>{const x1=x*cyw-y*syw,y1=x*syw+y*cyw;return [x1,y1*cp-z*sp,y1*sp+z*cp]};// [tela x, profundidade, altura]
-  const raio=.5*Math.hypot(maxX-minX,T.W,maxZ-minZ);const k=Math.min(W,H)/(2.1*raio)*V3.zoom;
+  const raio=.5*Math.hypot(T.L,T.W,T.H);const k=Math.min(W,H)/(2.05*raio)*V3.zoom;
   const P=(x,y,z)=>{const r=rot(x-cX,y-cY,z-cZ);return {sx:W/2+r[0]*k,sy:H/2-r[2]*k,d:r[1]}};
   const luz=(()=>{const l=[.35,-.55,.75],n=Math.hypot(...l);return l.map(v=>v/n)})();
   const tint=(hex,f)=>{let n=parseInt(String(hex).replace('#','').slice(0,6),16);if(isNaN(n))n=0x888888;const r=Math.min(255,Math.round((n>>16)*f)),g=Math.min(255,Math.round((n>>8&255)*f)),b=Math.min(255,Math.round((n&255)*f));return `rgb(${r},${g},${b})`};
   const faces=[];
-  const caixa=(x,y,z,l,w,h,cor,linha)=>{const v=[[x,y,z],[x+l,y,z],[x+l,y+w,z],[x,y+w,z],[x,y,z+h],[x+l,y,z+h],[x+l,y+w,z+h],[x,y+w,z+h]];
-    [[[0,3,7,4],[-1,0,0]],[[1,2,6,5],[1,0,0]],[[0,1,5,4],[0,-1,0]],[[3,2,6,7],[0,1,0]],[[0,1,2,3],[0,0,-1]],[[4,5,6,7],[0,0,1]]].forEach(([idx,nm])=>{
-      const n=rot(...nm);if(n[1]>=-.001)return;const pts=idx.map(i=>P(...v[i]));const lum=.55+.5*Math.max(0,nm[0]*luz[0]+nm[1]*luz[1]+nm[2]*luz[2]);
-      faces.push({pts,d:pts.reduce((s,p)=>s+p.d,0)/4,cor:tint(cor,lum),linha})})};
-  if(V3.cab){const gw=T.W;
-    caixa(-cabL,0,-roda*.55,cabL+T.L,gw,roda*.35,'#3b3d42');                         // chassi
-    caixa(-cabL,-2,-roda*.2,cabL-12,gw+4,T.H*.78,'#d9dbe0','rgba(0,0,0,.35)');        // cabine
-    caixa(-cabL-3,gw*.1,T.H*.3,4,gw*.8,T.H*.36,'#1e3a5c');                           // para-brisa
-    caixa(-cabL*.55,-3,T.H*.33,cabL*.38,4,T.H*.26,'#1e3a5c');caixa(-cabL*.55,gw-1,T.H*.33,cabL*.38,4,T.H*.26,'#1e3a5c'); // janelas
-    caixa(-cabL-6,gw*.05,-roda*.45,6,gw*.9,roda*.3,ac);                              // para-choque
-    [-cabL*.55,T.L*.62,T.L*.84].forEach(px=>{caixa(px-roda*.5,-10,-roda,roda,22,roda,'#151517');caixa(px-roda*.5,gw-12,-roda,roda,22,roda,'#151517')})}
-  placed.forEach(b=>caixa(b.x,b.y,b.z,b.l,b.w,b.h,b.it.cor,'rgba(0,0,0,.4)'));
+  /* caixa genérica; "face" guarda o tipo (lado) para os detalhes de flight case */
+  const caixa=(x,y,z,l,w,h,cor,extra)=>{const v=[[x,y,z],[x+l,y,z],[x+l,y+w,z],[x,y+w,z],[x,y,z+h],[x+l,y,z+h],[x+l,y+w,z+h],[x,y+w,z+h]];
+    [[[0,3,7,4],[-1,0,0],'xm'],[[1,2,6,5],[1,0,0],'xp'],[[0,1,5,4],[0,-1,0],'ym'],[[3,2,6,7],[0,1,0],'yp'],[[0,1,2,3],[0,0,-1],'base'],[[4,5,6,7],[0,0,1],'topo']].forEach(([idx,nm,lado])=>{
+      const n=rot(...nm);if(n[1]>=-.001)return;const pts=idx.map(i=>P(...v[i]));const lum=.6+.5*Math.max(0,nm[0]*luz[0]+nm[1]*luz[1]+nm[2]*luz[2]);
+      faces.push(Object.assign({pts,d:pts.reduce((s,p)=>s+p.d,0)/4,cor:tint(cor,lum),lado,lum,dims:{l,w,h}},extra||{}))})};
+  placed.forEach(b=>{const it=b.it;const roda=it.rodas?Math.min(n0(it.altRoda)||12,b.h*.4):0;const afundou=b.afundou||0;
+    const zc=b.z-afundou+roda;const hc=b.z+b.h-zc;
+    if(roda){const s=Math.min(14,b.l*.14,b.w*.18),m=Math.min(4,s*.3);
+      [[b.x+m,b.y+m],[b.x+b.l-m-s,b.y+m],[b.x+m,b.y+b.w-m-s],[b.x+b.l-m-s,b.y+b.w-m-s]].forEach(([wx,wy])=>caixa(wx,wy,b.z-afundou,s,s,roda,'#262a33',{roda:true}));
+      caixa(b.x+1,b.y+1,zc-2,b.l-2,b.w-2,2,'#9aa0a8',{prato:true})}
+    caixa(b.x,b.y,zc,b.l,b.w,hc,'#1f2023',{caseBox:true,modelo:it.modelo||'malao',etq:it.cor,lw:{l:b.l,w:b.w}})});
   // assoalho do baú
   ctx.beginPath();[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0]].map(p=>P(...p)).forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle='rgba(128,140,155,.18)';ctx.fill();
-  faces.sort((a,b)=>b.d-a.d).forEach(f=>{ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle=f.cor;ctx.fill();if(f.linha){ctx.strokeStyle=f.linha;ctx.lineWidth=.7;ctx.stroke()}});
-  // contorno do baú (sempre por cima, tracejado)
+  const lerp=(f,u,v)=>{const [a,b,,d]=f.pts;return [a.sx+(b.sx-a.sx)*u+(d.sx-a.sx)*v,a.sy+(b.sy-a.sy)*u+(d.sy-a.sy)*v]};
+  const quad=(f,u0,v0,u1,v1,fill,stroke,lw)=>{const q=[lerp(f,u0,v0),lerp(f,u1,v0),lerp(f,u1,v1),lerp(f,u0,v1)];ctx.beginPath();q.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw||1;ctx.stroke()}};
+  const linha=(f,u0,v0,u1,v1,cor,lw)=>{ctx.beginPath();ctx.moveTo(...lerp(f,u0,v0));ctx.lineTo(...lerp(f,u1,v1));ctx.strokeStyle=cor;ctx.lineWidth=lw;ctx.stroke()};
+  const alu=a=>`rgba(${Math.round(200*a)},${Math.round(205*a)},${Math.round(212*a)},1)`;
+  /* detalhes de flight case em cada face visível */
+  function detalhes(f){const L=f.lum,met=alu(Math.min(1.15,.75+.35*L)),metEsc=alu(.62),borda=Math.max(1,2.6*k);
+    const lados=f.lado==='topo'||f.lado==='base';const longo=(f.lado==='ym'||f.lado==='yp')?f.lw.l>=f.lw.w:(f.lado==='xm'||f.lado==='xp')?f.lw.w>f.lw.l:false;
+    const uLen=(f.lado==='ym'||f.lado==='yp')?f.lw.l:(f.lado==='xm'||f.lado==='xp')?f.lw.w:f.lw.l;const vLen=lados?f.lw.w:f.dims.h;const du=Math.min(.12,3/Math.max(uLen,1)),dv=Math.min(.12,3/Math.max(vLen,1));
+    if(!lados){
+      if(f.modelo==='rack'){quad(f,du*2,dv*2,1-du*2,1-dv*2,null,metEsc,Math.max(1,1.2*k))}
+      if(f.modelo==='gaveteiro'&&longo){[.32,.56,.8].forEach(v=>linha(f,.04,v,.96,v,metEsc,Math.max(1,1.4*k)));[.2,.44,.68].forEach(v=>quad(f,.42,v-.02,.58,v+.02,met))}
+      if(['malao','cabos','maleta'].includes(f.modelo)){quad(f,0,.76,1,.82,met)}
+      if(longo&&f.modelo!=='gaveteiro'){const v0=f.modelo==='rack'?.45:.7;const s=Math.min(.09,10/Math.max(uLen,1));
+        [.18,.82].forEach(u=>{quad(f,u-s,v0,u+s,v0+.16,met,metEsc,1)});if(f.modelo==='maleta')quad(f,.42,v0+.02,.58,v0+.12,metEsc)}
+      if(!longo&&f.modelo!=='maleta'){quad(f,.36,.5,.64,.66,metEsc,met,1)}
+      ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.strokeStyle=met;ctx.lineWidth=borda;ctx.stroke();
+      [[0,1],[1,1]].forEach(([u,v])=>{const p=lerp(f,u,v);ctx.beginPath();ctx.arc(p[0],p[1],Math.max(1.5,2.4*k),0,7);ctx.fillStyle=alu(1.15);ctx.fill()})}
+    else if(f.lado==='topo'){
+      ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.strokeStyle=met;ctx.lineWidth=borda;ctx.stroke();
+      if(f.modelo==='malao'||f.modelo==='cabos'){[[.12,.15],[.12,.7],[.74,.15],[.74,.7]].forEach(([u,v])=>quad(f,u,v,u+.14,v+.15,'#0b0b0c',met,1))}
+      else if(f.modelo==='maleta'){quad(f,.4,.42,.6,.58,'#0b0b0c',met,1)}
+      quad(f,.44,.44,.56,.56,f.etq)}}
+  faces.sort((a,b)=>b.d-a.d).forEach(f=>{ctx.beginPath();f.pts.forEach((p,i)=>i?ctx.lineTo(p.sx,p.sy):ctx.moveTo(p.sx,p.sy));ctx.closePath();ctx.fillStyle=f.cor;ctx.fill();
+    if(f.caseBox)detalhes(f);else{ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=.6;ctx.stroke()}});
+  // contorno do baú (tracejado, por cima)
   const v=[[0,0,0],[T.L,0,0],[T.L,T.W,0],[0,T.W,0],[0,0,T.H],[T.L,0,T.H],[T.L,T.W,T.H],[0,T.W,T.H]].map(p=>P(...p));
   ctx.strokeStyle=ink;ctx.lineWidth=1;ctx.setLineDash([5,4]);[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,b])=>{ctx.beginPath();ctx.moveTo(v[a].sx,v[a].sy);ctx.lineTo(v[b].sx,v[b].sy);ctx.stroke()});ctx.setLineDash([]);
-  ctx.fillStyle=ink;ctx.font='700 11px Inter,sans-serif';const tf=P(V3.cab?-cabL:0,T.W/2,T.H+10),tp=P(T.L,T.W/2,T.H+10);ctx.fillText(V3.cab?'FRENTE':'CABINE',tf.sx-22,tf.sy-4);ctx.fillText('PORTA',tp.sx-18,tp.sy-4);
+  ctx.fillStyle=ink;ctx.font='700 11px Inter,sans-serif';const tf=P(0,T.W/2,T.H+8),tp=P(T.L,T.W/2,T.H+8);ctx.fillText('CABINE',tf.sx-22,tf.sy-4);ctx.fillText('PORTA',tp.sx-18,tp.sy-4);
 }
 document.addEventListener('click',e=>{const b=e.target.closest('[data-v3]');if(!b)return;const a=b.dataset.v3;
   if(V3_VISTAS[a]){V3.auto=false;[V3.yaw,V3.pitch]=V3_VISTAS[a]}else if(a==='giro'){V3.auto=!V3.auto;if(V3.auto)girar3D()}else if(a==='cab'){V3.cab=!V3.cab}else if(a==='mais')V3.zoom=Math.min(3.5,V3.zoom*1.2);else if(a==='menos')V3.zoom=Math.max(.5,V3.zoom/1.2);else if(a==='imp'){V3.auto=false;window.print();return}
   $$('[data-v3="giro"]').forEach(x=>x.textContent=V3.auto?'Parar giro':'Girar 360°');$$('[data-v3="cab"]').forEach(x=>x.textContent=V3.cab?'Caminhão: com desenho':'Caminhão: sem desenho');desenharTodos3D()});
 window.addEventListener('resize',()=>desenharTodos3D());
-const barra3D=()=>`<div class="row small v3bar"><button class="btn sm" data-v3="giro">${V3.auto?'Parar giro':'Girar 360°'}</button><button class="btn sm" data-v3="frente">Frente</button><button class="btn sm" data-v3="lateral">Lateral</button><button class="btn sm" data-v3="traseira">Traseira</button><button class="btn sm" data-v3="topo">Topo</button><button class="btn sm" data-v3="iso">3D</button><button class="btn sm" data-v3="menos">−</button><button class="btn sm" data-v3="mais">+</button><button class="btn sm" data-v3="cab">${V3.cab?'Caminhão: com desenho':'Caminhão: sem desenho'}</button><button class="btn sm" data-v3="imp">Imprimir</button><span class="muted">Arraste para girar · roda do mouse para zoom</span></div>`;
+const barra3D=()=>`<div class="row small v3bar"><button class="btn sm" data-v3="giro">${V3.auto?'Parar giro':'Girar 360°'}</button><button class="btn sm" data-v3="frente">Frente</button><button class="btn sm" data-v3="lateral">Lateral</button><button class="btn sm" data-v3="traseira">Traseira</button><button class="btn sm" data-v3="topo">Topo</button><button class="btn sm" data-v3="iso">3D</button><button class="btn sm" data-v3="menos">−</button><button class="btn sm" data-v3="mais">+</button><button class="btn sm" data-v3="imp">Imprimir</button><span class="muted">Arraste para girar · roda do mouse para zoom</span></div>`;
 
 V.carga=()=>{
   const vs=S.veiculos.filter(v=>v.bauC);
@@ -1867,7 +1889,7 @@ async function reservarOS(ev){
 const OD={msg:'',aba:'drive',q:'',sync:0,busy:false};
 async function syncDrive(manual){
   if(OD.busy)return;const mcp=await useCap('mcp');const set=t=>{OD.msg=t;const el=$('#odst');if(el)el.textContent=t};
-  if(!mcp){set(ME.local?'A leitura das OS do Drive entra na próxima etapa do aplicativo.':'Integração com o Google entra na próxima etapa do aplicativo.');return}
+  if(!mcp)return syncDriveScript(manual,set);
   if(!pode('os')){if(manual)set('Só administradores e logística atualizam a lista do Drive.');return}
   OD.busy=true;set('Lendo a pasta de OS no Drive…');
   try{const {pasta,controle}=cfgDrive();let files=[],token='',pg=0;
@@ -1882,9 +1904,9 @@ async function syncDrive(manual){
 }
 /* importa uma OS do Drive para dentro do sistema (cabeçalho da O.S Comercial + lista de equipamentos da O.S.E) */
 async function importarOS(fileId){
-  const o=get('osdrive',fileId);const mcp=await useCap('mcp');if(!o||!mcp)return toast('Conector indisponível');
+  const o=get('osdrive',fileId);const mcp=await useCap('mcp');if(!o)return;
   toast('Lendo '+o.numero+'…');
-  try{const [rc,re]=await Promise.all([mcp.callTool(GSHEETS,'get_values',{spreadsheetId:fileId,range:"'O.S Comercial'!A1:E20"},{cache:false}).catch(()=>null),mcp.callTool(GSHEETS,'get_values',{spreadsheetId:fileId,range:"'O.S.E'!A1:D500"},{cache:false})]);
+  try{const [rc,re]=await lerAbasOS(mcp,fileId);
     const com=((rc&&rc.payload&&rc.payload.values)||[]).map(r=>r.map(c=>String(c||'')));const ose=((re.payload&&re.payload.values)||[]).map(r=>r.map(c=>String(c||'').trim()));
     const campo=lab=>{for(const r of com)for(let i=0;i<r.length;i++){if(norm(r[i]).startsWith(norm(lab))){const v=r[i].slice(r[i].indexOf(':')+1).trim();return v||(r[i+1]&&!/:\s*$/.test(r[i+1])?r[i+1]:(r[i+2]||'')).trim()}}return ''};
     const dataBR=s=>{const m=String(s||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?`${m[3]}-${pad(m[2])}-${pad(m[1])}`:''};const horaBR=s=>{const m=String(s||'').match(/(\d{1,2})\s*[hH:]\s*(\d{2})?/);return m?pad(m[1])+':'+pad(m[2]||'00'):''};
@@ -1911,7 +1933,7 @@ V.os=()=>{
    <input class="i" id="odq" placeholder="Nº, cliente, local, vendedor" value="${esc(OD.q)}" style="max-width:300px"><span class="small muted" id="odst">${esc(OD.msg||('Próximo número: '+proxNumero()))}</span></div><div id="odtab"></div>`);
   const draw=()=>{const q=norm(OD.q);
     if(OD.aba==='drive'){const l=S.osdrive.filter(o=>!q||norm([o.numero,o.cliente,o.local,o.sigla,o.status].join(' ')).includes(q)).sort((a,b)=>String(b.numero).localeCompare(a.numero));
-      $('#odtab').innerHTML=l.length?`<div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Cliente / evento</th><th>Local</th><th>Período</th><th>Vend.</th><th>Versão</th><th>Status no Drive</th><th>No sistema</th><th></th></tr></thead><tbody>${l.map(o=>{const ev=S.eventos.find(e=>e.driveFileId===o.id||String(e.numero).toUpperCase()===o.numero);return `<tr><td class="mono"><b>${esc(o.numero)}</b></td><td>${esc(o.cliente)}</td><td>${esc(o.local)}</td><td class="num">${esc(o.periodo)}</td><td>${esc(o.sigla)}</td><td>V${esc(o.versao)}</td><td><span class="chip c-${OS_COR(o.status)}">${esc(o.status)}</span></td><td>${ev?`<a href="#evento-${ev.id}">${stChip(ev.status)}</a>`:'<span class="muted small">—</span>'}</td><td class="row" style="flex-wrap:nowrap"><a class="btn sm" href="${esc(o.url)}" target="_blank" rel="noopener">Abrir no Drive</a>${pode('os')?`<button class="btn sm ${ev?'':'pri'}" data-imp="${o.id}">${ev?'Atualizar':'Trazer p/ sistema'}</button>`:''}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">${S.osdrive.length?'Nada no filtro.':'Clique em “Atualizar do Drive” para listar as OS da pasta.'}</div>`;
+      $('#odtab').innerHTML=l.length?`<div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Cliente / evento</th><th>Local</th><th>Período</th><th>Vend.</th><th>Versão</th><th>Status no Drive</th><th>No sistema</th><th></th></tr></thead><tbody>${l.map(o=>{const ev=S.eventos.find(e=>e.driveFileId===o.id||String(e.numero).toUpperCase()===o.numero);return `<tr><td class="mono"><b>${esc(o.numero)}</b></td><td>${esc(o.cliente)}</td><td>${esc(o.local)}</td><td class="num">${esc(o.periodo)}</td><td>${esc(o.sigla)}</td><td>V${esc(o.versao)}</td><td><span class="chip c-${OS_COR(o.status)}">${esc(o.status)}</span></td><td>${ev?`<a href="#evento-${ev.id}">${stChip(ev.status)}</a>`:'<span class="muted small">—</span>'}</td><td class="row" style="flex-wrap:nowrap"><a class="btn sm" href="${esc(o.url)}" target="_blank" rel="noopener" title="Abre a planilha da OS em outra aba">Visualizar</a><a class="btn sm" href="${linkPdfOS(o.id)}" target="_blank" rel="noopener" title="Abre a OS em PDF numa aba nova, pronta para imprimir">Imprimir (PDF)</a>${pode('os')?`<button class="btn sm ${ev?'':'pri'}" data-imp="${o.id}">${ev?'Atualizar':'Trazer p/ sistema'}</button>`:''}</td></tr>`}).join('')}</tbody></table></div>`:`<div class="empty">${S.osdrive.length?'Nada no filtro.':'Clique em “Atualizar do Drive” para listar as OS da pasta.'}</div>`;
       $$('[data-imp]').forEach(b=>b.onclick=async()=>{b.disabled=true;const ev=await importarOS(b.dataset.imp);b.disabled=false;if(ev)draw()})}
     else{const l=S.eventos.filter(e=>e.status!=='Cancelado'&&(!q||norm([e.numero,e.nome,e.cliente,e.local,e.vendedor].join(' ')).includes(q))).sort((a,b)=>String(b.numero||'').localeCompare(a.numero||''));
       $('#odtab').innerHTML=l.length?`<div class="tbl-wrap"><table><thead><tr><th>Nº OS</th><th>Evento</th><th>Cliente</th><th>Carga</th><th>Origem</th><th>Status</th><th></th></tr></thead><tbody>${l.map(e=>`<tr class="click" data-id="${e.id}"><td class="mono">${esc(e.numero)}</td><td><b>${esc(e.nome)}</b></td><td>${esc(e.cliente)}</td><td>${fDT(e.cargaInicio)}</td><td>${e.driveFileId?'<span class="chip c-acc">Drive</span>':'<span class="chip">Sistema</span>'}</td><td>${stChip(e.status)}</td><td><span class="btn sm">Abrir OS</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma OS no sistema.</div>';
@@ -2150,6 +2172,49 @@ function etiquetas(list){const m=openModal(`<div class="mbox"><header><h2>Etique
   $('#mx',m).onclick=closeModal;$('#eb',m).onclick=()=>{closeModal();ETQ.imprimir=false;baixarEtiquetas(list)};$('#ei',m).onclick=()=>{closeModal();ETQ.imprimir=true;baixarEtiquetas(list)}}
 function saidaEtiquetas(html){if(ETQ.imprimir){ETQ.imprimir=false;const css=(html.match(/<style>([\s\S]*?)<\/style>/)||[])[1]||'';const body=(html.match(/<body>([\s\S]*?)<script>/)||[])[1]||html;imprimirHTML('Etiquetas',body,css)}else baixar('Etiquetas_QR.html',html)}
 document.addEventListener('click',e=>{if(e.target.closest('#bimp'))imprimir()});
+/* ================= CASES: modelos (flight case), rodinhas e encaixe ================= */
+const MODELOS_CASE={malao:'Malão com tampa',rack:'Rack (AC / áudio / vídeo)',gaveteiro:'Gaveteiro',maleta:'Maleta (microfone e acessórios)',cabos:'Malão de cabos'};
+(()=>{const f=SPEC.cases.f;const i=f.findIndex(x=>x.k==='a');
+  f.splice(1,0,{k:'modelo',l:'Modelo',t:'sel',o:Object.keys(MODELOS_CASE)});
+  f.splice(i+2,0,{k:'rodinhas',l:'Tem rodinhas',t:'chk'},{k:'altRoda',l:'Altura das rodinhas (cm, já incluída na altura total)',t:'num'},{k:'afunda',l:'Quanto a rodinha encaixa na tampa da case de baixo (cm)',t:'num'});
+  const a=f.find(x=>x.k==='a');a.l='Altura total (cm, com rodinhas)';})();
+const nomeModelo=m=>MODELOS_CASE[m]||MODELOS_CASE.malao;
+const CASES_PRONTAS=[
+  {nome:'Malão com rodinhas (modelo)',modelo:'malao',c:120,l:60,a:75,peso:60,empilha:true,girar:true,rodinhas:true,altRoda:12,afunda:8},
+  {nome:'Rack AC 10U (modelo)',modelo:'rack',c:60,l:55,a:70,peso:45,empilha:true,girar:true,rodinhas:true,altRoda:12,afunda:0},
+  {nome:'Gaveteiro (modelo)',modelo:'gaveteiro',c:80,l:60,a:115,peso:90,empilha:false,girar:true,rodinhas:true,altRoda:12,afunda:0},
+  {nome:'Maleta de microfone (modelo)',modelo:'maleta',c:60,l:40,a:20,peso:12,empilha:true,girar:true,rodinhas:false,altRoda:0,afunda:0},
+  {nome:'Malão de cabos (modelo)',modelo:'cabos',c:100,l:60,a:70,peso:70,empilha:true,girar:true,rodinhas:true,altRoda:12,afunda:8}];
+V.cases=()=>{
+  view(`<div class="head"><div><h1>Cases</h1><p>Medidas externas de cada case, com modelo e rodinhas. São usadas no simulador de carga e na ligação com os patrimônios.</p></div><div class="row">${pode('cadastro')?'<button class="btn" id="cmod">+ Modelos prontos</button>':''}<button class="btn pri" id="nc">+ Nova case</button></div></div>`);
+  const l=S.cases.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+  view(l.length?`<div class="tbl-wrap"><table><thead><tr><th>Case</th><th>Modelo</th><th class="r">C × L × A (cm)</th><th>Rodinhas</th><th class="r">Volume</th><th class="r">Peso</th><th>Empilhável</th><th class="r">Patrimônios</th></tr></thead><tbody>${l.map(c=>`<tr class="click" data-id="${c.id}"><td><b>${esc(c.nome)}</b>${c.exemplo?' <span class="chip">exemplo</span>':''}</td><td class="small">${esc(nomeModelo(c.modelo))}</td><td class="r num">${c.c} × ${c.l} × ${c.a}</td><td class="small">${c.rodinhas?`Sim · ${n0(c.altRoda)||12} cm${n0(c.afunda)?` · encaixa ${c.afunda} cm`:''}`:'Não'}</td><td class="r num">${fmt(c.c*c.l*c.a/1e6,3)} m³</td><td class="r num">${c.peso?fmt(c.peso)+' kg':'—'}</td><td>${c.empilha?'<span class="chip c-ok">Sim</span>':'<span class="chip c-warn">Não</span>'}</td><td class="r">${S.produtos.filter(p=>p.caseId===c.id).length}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Nenhuma case cadastrada. Use “Modelos prontos” para começar com os 5 tipos de case e depois ajuste as medidas.</div>');
+  $('#nc').onclick=()=>editForm('cases',{modelo:'malao',empilha:true,girar:true,rodinhas:true,altRoda:12,afunda:0});
+  $$('tr[data-id]').forEach(r=>r.onclick=()=>editForm('cases',get('cases',r.dataset.id)));
+  if($('#cmod'))$('#cmod').onclick=async()=>{let n=0;for(const c of CASES_PRONTAS){if(S.cases.some(x=>x.nome===c.nome))continue;await put('cases',Object.assign({},c),{silent:true});n++}render();toast(n?n+' modelo(s) de case adicionados. Ajuste as medidas reais de cada um.':'Os modelos prontos já estão cadastrados.')};
+};
+
+/* ================= OS DO DRIVE PELO APPS SCRIPT (app instalável) ================= */
+const urlScript=(acao,extra)=>{const u=cfg('leitorUrl'),t=cfg('leitorToken');if(!u||!t)return '';return u+(u.includes('?')?'&':'?')+'acao='+acao+'&t='+encodeURIComponent(t)+(extra||'')};
+async function chamarScript(acao,extra){const u=urlScript(acao,extra);if(!u)throw new Error('configure o link do Apps Script em Configurações');const r=await fetch(u,{credentials:'omit',cache:'no-store'});const d=await r.json();if(d.erro)throw new Error(d.erro==='chave'?'código de segurança inválido':d.erro);return d}
+async function syncDriveScript(manual,set){
+  if(!urlScript('os')){set('Para listar as OS do Drive, preencha o link do Apps Script em Configurações.');return}
+  if(!pode('os')&&!pode('cadastro')){if(manual)set('Seu perfil não atualiza a lista do Drive.');return}
+  if(!ONLINE){set('Sem internet: mostrando a última lista guardada.');return}
+  OD.busy=true;set('Lendo a pasta de OS no Drive…');
+  try{const d=await chamarScript('os','&pasta='+encodeURIComponent(cfgDrive().pasta));const vistos=new Set();let n=0;
+    for(const f of d.files||[]){const o=parseTituloOS(f.title);if(!o)continue;vistos.add(f.id);const doc=Object.assign({id:f.id,url:f.viewUrl||'',modificado:f.modifiedTime||'',titulo:f.title},o);const old=get('osdrive',f.id);if(!old||old.titulo!==doc.titulo||old.modificado!==doc.modificado){await put('osdrive',doc,{silent:true});n++}}
+    for(const o of S.osdrive.filter(o=>!vistos.has(o.id)))await del('osdrive',o.id);
+    set(`${vistos.size} OS na pasta · ${n} atualizada(s) · ${new Date().toLocaleTimeString('pt-BR')}`);scheduleRender();
+  }catch(e){set('Não consegui ler o Drive: '+e.message)}finally{OD.busy=false}
+}
+async function lerAbasOS(mcp,fileId){
+  if(mcp)return Promise.all([mcp.callTool(GSHEETS,'get_values',{spreadsheetId:fileId,range:"'O.S Comercial'!A1:E20"},{cache:false}).catch(()=>null),mcp.callTool(GSHEETS,'get_values',{spreadsheetId:fileId,range:"'O.S.E'!A1:D500"},{cache:false})]);
+  const d=await chamarScript('lerOS','&id='+encodeURIComponent(fileId));return [{payload:{values:d.com||[]}},{payload:{values:d.ose||[]}}];
+}
+/* visualizar e imprimir a OS do Drive em outra aba */
+const linkPdfOS=id=>`https://docs.google.com/spreadsheets/d/${id}/export?format=pdf&portrait=true&fitw=true&gridlines=false&size=A4`;
+
 /* ================= DADOS DE EXEMPLO ================= */
 async function seedExemplo(){
   const b=$('#seed');if(b){b.disabled=true;b.textContent='Carregando…'}
